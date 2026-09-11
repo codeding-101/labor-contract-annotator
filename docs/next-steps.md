@@ -34,20 +34,9 @@
 
 ---
 
-## 已确认的环境事实（别重新踩）
+## 环境与约定
 
-| 事项 | 结论 |
-|---|---|
-| Node 版本 | v24.19.0，**原生支持 TypeScript 类型擦除**，所以 `node src/x.ts` 直接能跑，测试用内置 `node:test`，零测试框架依赖。代价：必须写"可擦除语法"（不能用 enum、namespace、参数属性） |
-| 依赖 | 只有 `zod`（运行时）+ `typescript`、`@types/node`（开发） |
-| TypeScript | v7，`tsc --noEmit` 正常 |
-| **换行符陷阱** | 本机 `core.autocrlf=true`。凡是内容哈希要参与校验的文件，必须在 `.gitattributes` 里标 `-text` |
-| PowerShell 读 UTF-8 | `Get-Content` 默认按 ANSI 解码，读中文 JSON 会失败或乱码。**必须加 `-Encoding UTF8`** |
-| PowerShell 写 .ps1 | 带中文的脚本必须存成 **UTF-8 with BOM**，否则 PS 5.1 按 ANSI 解析，会把后面的 `$` 和反引号一起吃掉 |
-| 中文经命令管道 | 输出经管道时会间歇性乱码（如上）。要看真实内容用文件读取工具，别依赖终端回显 |
-| shell | PowerShell，**不支持 `&&`**，串联用 `;` |
-| 联网 | `web_search` 工具当前报错不可用；`web_fetch` 可用（Bing 需用 `cn.bing.com`）。抓官方页面用 `Invoke-WebRequest -OutFile` 直接落字节更可靠 |
-| 国家法律法规数据库 | `flk.npc.gov.cn` 是 SPA，`/api/detail` 的 GET 返回页面壳、POST 返回 405，暂时取不到结构化数据。立法条数据目前靠政府网站的静态页面 |
+见 **`AGENTS.md`**——那份文件每次会话自动加载，记录了代码约定、架构约束和已确认的环境坑（换行符陷阱、PowerShell 编码陷阱、可用工具状态等）。这份文件只记任务状态，不重复那些内容。
 
 ---
 
