@@ -1,0 +1,32 @@
+{
+  "$comment": "人工维护的来源声明。sources/ 下的 HTML 是官方页面的冻结快照，构建脚本据此计算 SHA256 与抽取正文；不要手改快照内容，要更新就重新抓取并同步哈希。",
+  "laws": {
+    "labor-contract-law": {
+      "name": "中华人民共和国劳动合同法",
+      "shortName": "劳动合同法",
+      "idPrefix": "LCL",
+      "sources": [
+        {
+          "id": "samr",
+          "file": "labor-contract-law/samr.html",
+          "url": "https://www.samr.gov.cn/zw/zfxxgk/fdzdgknr/bgt/art/2023/art_0abfdd261c03417b949df19d869add8d.html",
+          "publisher": "国家市场监督管理总局",
+          "publisherVerified": true,
+          "retrievedAt": "2026-09-11",
+          "role": "primary",
+          "note": "中央机关来源。抽取结果为连续的第 1 至第 98 条，抽取问题 0，故作为主来源。Word 导出的行内样式较多，标签剥离后按段落切分。"
+        },
+        {
+          "id": "xjbh",
+          "file": "labor-contract-law/xjbh.html",
+          "url": "https://www.xjbh.gov.cn/xjbhx/c109952/202203/76b0445b248f4460a43ab8fd59e7948f.shtml",
+          "publisher": "博湖县人民政府（xjbh.gov.cn）",
+          "publisherVerified": true,
+          "retrievedAt": "2026-09-11",
+          "role": "cross-check",
+          "note": "含 2012 年修正决定与修正后合并正文，作为交叉校验来源。已知三处页面缺陷：① 附则的章标题被误写成「第九章」并与第九十六条粘在同一块（抽取器已绕开）；② 第六十三条第二款多一个前引号，交叉校验会报为差异；③ 第九十八条后紧跟页面页脚（网站地图、ICP备案号等），抽取器按页脚标志词收尾，不并入条文。"
+        }
+      ]
+    }
+  }
+}

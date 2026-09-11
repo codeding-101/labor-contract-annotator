@@ -1,0 +1,9 @@
+# 源码与生成数据统一用 LF，避免不同平台产生无意义的 diff。
+*.ts   text eol=lf
+*.json text eol=lf
+*.md   text eol=lf
+
+# 必须放在最后一条：快照的内容哈希是溯源的一部分。
+# 禁止任何换行符转换，否则在别的机器上克隆后字节不同，哈希对不上，
+# validate:data 会失败——而这正是哈希存在的意义。
+sources/** -text

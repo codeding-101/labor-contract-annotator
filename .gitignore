@@ -1,0 +1,10 @@
+node_modules/
+*.log
+
+# 生成的报告与本地临时产物
+dist/
+tmp/
+
+# 法条与范本数据是由 sources/ 构建出来的产物，不入库。
+# 克隆后跑 npm run build:statutes 即可从冻结快照复现。
+data/

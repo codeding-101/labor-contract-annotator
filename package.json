@@ -1,0 +1,25 @@
+{
+  "name": "labor-contract-guard",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "本地化、开源的劳动合同风险检查工具：官方范本比对 + 规则引擎，文件不离开设备",
+  "engines": {
+    "node": ">=22.6"
+  },
+  "scripts": {
+    "build:statutes": "node src/build-statutes.ts",
+    "validate:data": "node src/validate-data.ts",
+    "diff:sources": "node src/diff-sources.ts",
+    "test": "node --test \"tests/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm run test && npm run build:statutes && npm run validate:data"
+  },
+  "dependencies": {
+    "zod": "^4.6.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.2",
+    "typescript": "^7.0.2"
+  }
+}
