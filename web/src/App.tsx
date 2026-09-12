@@ -3,16 +3,60 @@ import { analyzeContract, type AnalysisResult } from './pipeline.ts'
 import { ReportView } from './ReportView.tsx'
 import { cleanSampleText, riskySampleText } from './samples.ts'
 
+type SourceInfo = { label: string; detail: string }
+
 export function App(): React.ReactElement {
   const [text, setText] = useState('')
   const [result, setResult] = useState<AnalysisResult | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [source, setSource] = useState<SourceInfo | null>(null)
+
+  function reset(clearText: boolean): void {
+    if (clearText) setText('')
+    setResult(null)
+    setError(null)
+    setSource(null)
+  }
+
+  function load(sample: string, label: string): void {
+    reset(false)
+    setText(sample)
+    setSource({ label, detail: '由工具预置的示例文本' })
+  }
+
+  async function handleFile(file: File): Promise<void> {
+    reset(true)
+    if (file.type !== 'application/pdf' && !/\.pdf$/i.test(file.name)) {
+      setError('目前只支持 PDF 文件。Word 与图片格式的支持还在做。')
+      return
+    }
+
+    try {
+      // 按需加载：pdfjs 不小，只有真上传 PDF 时才拉进来，首屏不必为它买单
+      const { extractPdfText } = await import('./pdf.ts')
+      const extraction = await extractPdfText(await file.arrayBuffer())
+      if (!extraction.hasTextLayer) {
+        setError(
+          `这个 PDF 有 ${extraction.pageCount} 页，但读不到文字——多半是扫描件或拍照生成的图片 PDF。` +
+            '这种情况本工具暂时无法解析，请改用其他方式提供合同文本（例如从 Word 原件复制，或手工录入需要核对的条款）。',
+        )
+        return
+      }
+      setText(extraction.text)
+      setSource({
+        label: file.name,
+        detail: `PDF · ${extraction.pageCount} 页 · 提取出 ${extraction.text.length} 字`,
+      })
+    } catch (cause) {
+      setError(`读取 PDF 失败：${cause instanceof Error ? cause.message : String(cause)}`)
+    }
+  }
 
   function analyze(): void {
     try {
       const next = analyzeContract(text)
       if (next.clauseCount === 0) {
-        setError('没有识别出任何条款，请检查粘贴的内容是否完整。')
+        setError('没有识别出任何条款，请检查内容是否完整。')
         setResult(null)
         return
       }
@@ -24,12 +68,6 @@ export function App(): React.ReactElement {
     }
   }
 
-  function load(sample: string): void {
-    setText(sample)
-    setResult(null)
-    setError(null)
-  }
-
   return (
     <div className="page">
       <header className="hero">
@@ -37,26 +75,42 @@ export function App(): React.ReactElement {
         <p className="lead">
           把劳动合同与当地人社部门的官方示范文本逐条比对，标出差异、指出可能违反法律规定的条款，并附上对应的法条原文。
         </p>
-        <p className="privacy">
-          全部在你的浏览器里完成，合同内容不离开设备，也不经过任何服务器。
-        </p>
+        <p className="privacy">全部在你的浏览器里完成，合同内容不离开设备，也不经过任何服务器。</p>
       </header>
 
       <section className="card input-card">
         <div className="input-head">
-          <h2>粘贴合同内容</h2>
+          <h2>提供合同内容</h2>
           <div className="actions">
-            <button type="button" className="ghost" onClick={() => load(cleanSampleText)}>
+            <input
+              id="pdf-input"
+              className="sr-only"
+              type="file"
+              accept="application/pdf,.pdf"
+              onChange={(event) => {
+                const file = event.target.files?.[0]
+                if (file !== undefined) void handleFile(file)
+                event.target.value = ''
+              }}
+            />
+            <label className="ghost button-like" htmlFor="pdf-input">
+              选择 PDF 文件
+            </label>
+            <button type="button" className="ghost" onClick={() => load(cleanSampleText, '合规示例')}>
               填入合规示例
             </button>
-            <button type="button" className="ghost" onClick={() => load(riskySampleText)}>
+            <button type="button" className="ghost" onClick={() => load(riskySampleText, '可疑示例')}>
               填入可疑示例
             </button>
-            <button type="button" className="ghost" onClick={() => load('')}>
+            <button type="button" className="ghost" onClick={() => reset(true)}>
               清空
             </button>
           </div>
         </div>
+
+        <p className="muted hint">
+          支持<b>带文字层</b>的 PDF（电子合同基本都是），或直接把合同文字粘贴到下面。扫描件与拍照图片暂时读不出内容——本工具会明确告诉你，而不是给出一份空报告。
+        </p>
 
         <label className="sr-only" htmlFor="contract-text">
           合同内容
@@ -65,8 +119,11 @@ export function App(): React.ReactElement {
           id="contract-text"
           value={text}
           rows={12}
-          placeholder="把劳动合同的文字内容粘贴到这里。带条款编号（如「第一条」）最好，没有编号也能分析。"
-          onChange={(event) => setText(event.target.value)}
+          placeholder="把劳动合同的文字内容粘贴到这里，或用上方的「选择 PDF 文件」。带条款编号（如「第一条」）最好，没有编号也能分析。"
+          onChange={(event) => {
+            setText(event.target.value)
+            setSource(null)
+          }}
         />
 
         <div className="submit-row">
@@ -74,7 +131,11 @@ export function App(): React.ReactElement {
             开始检查
           </button>
           <span className="muted">
-            {text.trim() === '' ? '请先粘贴合同内容，或点右上角的示例' : `已粘贴 ${text.length} 字`}
+            {source !== null
+              ? `来源：${source.label}（${source.detail}）`
+              : text.trim() === ''
+                ? '请先提供合同内容'
+                : `已输入 ${text.length} 字`}
           </span>
         </div>
 

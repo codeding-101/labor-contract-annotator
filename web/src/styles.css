@@ -157,6 +157,26 @@ button.ghost:hover {
   border-color: var(--muted);
 }
 
+/* 用 label 当文件选择按钮：视觉与 ghost 按钮一致 */
+.button-like {
+  display: inline-block;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 4px 10px;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.button-like:hover {
+  color: var(--ink);
+  border-color: var(--muted);
+}
+
+.hint {
+  margin: 0 0 10px;
+}
+
 .error {
   margin: 12px 0 0;
   color: var(--red);
