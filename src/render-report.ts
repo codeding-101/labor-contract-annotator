@@ -58,7 +58,7 @@ export function renderReport(report: ContractReport): string {
 
   if (report.undetermined.length > 0) {
     push('─'.repeat(64))
-    push('无法判定的事项（不计入评分，也不等于没问题）')
+    push('无法判定的事项（不计入标注数，也不等于没问题）')
     push()
     for (const item of report.undetermined) {
       push(`  · ${item.title}（${item.ruleCode}）— ${item.reason}`)
