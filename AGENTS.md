@@ -53,7 +53,15 @@
 - 本机 `core.autocrlf=true`。**凡是内容哈希参与校验的文件，必须在 `.gitattributes` 里标 `-text`**，否则克隆后换行符变化会让哈希失效。`sources/**` 已这样处理，不要删。
 - Node v24.19.0（原生跑 TS）、TypeScript v7、npm 11。
 - 官方劳动合同范本普遍是 **Word 97-2003 二进制 `.doc`**（不是 `.docx`、也不在网页正文里）。读取用 `word-extractor`（纯 JS，不依赖本机装 Word 或 LibreOffice），封装在 `src/read-doc.ts`。但它对段落边界的还原不可靠，接入 `.doc` 来源前要先验证段落边界。`.docx` 需要另加读取器（mammoth），尚未接。
-- `web_search` 工具当前报错不可用；`web_fetch` 可用（用 `cn.bing.com`，`www.bing.com` 会跨域重定向）。抓官方页面用 `Invoke-WebRequest -OutFile` 直接落字节最可靠。
+- **`web_search` 在本机不可用，不要依赖它，也不要去"修"它。** 已查明的完整情况：
+
+  - 本机代理是**通的**：Clash 系客户端（进程名 `nano`，PID 会变）监听 `127.0.0.1:65532`，Windows 系统代理已指向它（`ProxyEnable=1`）。经该代理访问 google 返回 200、访问 `cli-chat-proxy.grok.com` 有服务器响应，说明隧道正常。
+  - **但 CLI 自身的请求不走系统代理**：交互式会话的 `billing` 请求持续报 `error sending request for url (https://cli-chat-proxy.grok.com/...)`。系统代理只对认它的程序生效。给进程显式设 `HTTP_PROXY`/`HTTPS_PROXY=http://127.0.0.1:65532` 后，该报错消失——所以环境变量这条路是有效的。彻底的办法是在 Clash 里开 **TUN 模式**（透明接管所有进程），那样 `billing` 与 `[ui] fork_secondary_model` 也会一并恢复。
+  - **即使传输通了，web_search 的返回也不可信**：实测（`grok -p ... --tools web_search`）两次调用都 `success: true`、都无传输错误，但返回的是**模型自述的自然语言，没有任何来源网址**，且两次结果互相矛盾（一次编出具体气温风力，一次说无法提供该日期预报）。这是"看起来成功、实为无依据"的假成功。
+  - **不要把 `[models] web_search` 改成 `deepseek-flash`**：那只会让它走同一个无来源的兜底路径。
+
+  **能用的是 `web_fetch`**（客户端自己抓目标网址，用 `cn.bing.com`，`www.bing.com` 会跨域重定向）。抓官方页面用 `Invoke-WebRequest -OutFile` 直接落字节最可靠。需要"搜索"时，请人用浏览器找 URL 再交给 `web_fetch`，比让工具编要可靠。
+- 代理端口 `65532` 绑定在 `0.0.0.0`（监听全部网卡）。若非有意让局域网共享，建议关掉客户端的 allow-lan，否则同网段的人可以借道你的代理。
 - `flk.npc.gov.cn`（国家法律法规数据库）是 SPA，`/api/detail` 取不到数据。法条来源目前靠政府网站静态页。
 - 浏览器验证：playwright MCP 已配好。**改界面必须真的在浏览器里走一遍**，不要只看构建是否通过。
 
