@@ -57,11 +57,11 @@ PDF 的文本层已经接上（`pdfjs-dist`，浏览器端，按需加载），�
 
 ## 下一步：只剩开启 Pages
 
-代码已推到 <https://github.com/codeding-101/annotator->（远端 `main` 的哈希与本地一致）。剩下一件只能由你做的事：
+代码已推到 <https://github.com/codeding-101/labor-contract-annotator>（远端 `main` 的哈希与本地一致）。剩下一件只能由你做的事：
 
 1. 仓库 **Settings → Pages**，把 Source 选成 "GitHub Actions"
 2. 回 **Actions** 标签页，选 "Deploy web to GitHub Pages" → **Run workflow**（首次推送时 Pages 还没开，那次部署会失败，手动触发一次即可）
-3. 地址：`https://codeding-101.github.io/annotator-/`
+3. 地址：`https://codeding-101.github.io/labor-contract-annotator/`
 
 **推送与身份的两个坑（都已踩过，记在 README 里）**：
 

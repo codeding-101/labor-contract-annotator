@@ -1,4 +1,6 @@
-# labor-contract-guard
+# labor-contract-annotator
+
+**在线演示：<https://codeding-101.github.io/labor-contract-annotator/>**（打开即用，不需要安装，也不用注册）
 
 > 本地化、开源的劳动合同风险检查工具。把当地人社部门的官方示范文本作为基准，逐条比对你的合同，标出差异与对应的法律条文。
 > **文件不离开你的设备。**
@@ -20,7 +22,7 @@
 | 案例语料 | 完成（v0）：3 份案例文档共 25 个案例，为规则提供带裁判结果的真实措辞 |
 | 标注与报告 | 完成（v0）：只做标注不给评分；报告组装＋文本渲染；示例合同自检零标注 |
 | 网页端 | 完成（v0）：纯前端应用，粘贴文本、上传 PDF 或 .docx；浏览器实测通过（Chromium） |
-| 部署 | 已启用 GitHub Pages：<https://codeding-101.github.io/annotator-/>（推送 `main` 自动构建部署） |
+| 部署 | 已上线：<https://codeding-101.github.io/labor-contract-annotator/>（推送 `main` 自动构建部署） |
 | 真实合同接入 | 部分完成：PDF（带文字层）与 Word（.docx）已支持；老式 .doc 与图片未接 |
 
 ---
@@ -301,14 +303,14 @@ npm run dev        # 开发模式
 
 ### 首次发布要做的三步
 
-仓库已推到 <https://github.com/codeding-101/annotator->，还差开启 Pages：
+仓库已推到 <https://github.com/codeding-101/labor-contract-annotator>，还差开启 Pages：
 
 ```bash
 # 1. 仓库 Settings → Pages，把 Source 选成 "GitHub Actions"
 # 2. 回到 Actions 标签页，选 "Deploy web to GitHub Pages"，点 "Run workflow"
 #    （首次推送时 Pages 还没开启，那一次部署会失败，手动触发一次即可）
 # 3. 等它跑完，地址是
-#    https://codeding-101.github.io/annotator-/
+#    https://codeding-101.github.io/labor-contract-annotator/
 ```
 
 **注意两点：**
