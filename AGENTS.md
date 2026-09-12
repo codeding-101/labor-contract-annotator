@@ -49,6 +49,11 @@
   - 验证文件上传要用 Playwright 的 `browser_file_upload`（点「选择 PDF 文件」会打开文件选择器，再传绝对路径）。测试用 PDF 放在 `tmp/`（已 gitignore，不进仓库）；需要时从政府网站抓一份带文字层的 PDF 即可。
   - **扫描件与拍照 PDF 读不出文字**，这条路径必须有明确报错，不能产出空报告——这是本地化架构的硬代价，不要用低准确率的 OCR 硬撑。
 - **改界面必须在浏览器里真跑一遍**（Playwright MCP 已配好）。只截图不算验证：要走完整流程（填示例 → 分析 → 看报告），也要看空态与失败态，桌面与移动视口都要看，并确认控制台无错误。已经验证过的路径与结果记在 README 的「网页端」一节。
+- **部署到 GitHub Pages**（`.github/workflows/deploy-web.yml`）。三条不要改坏：
+  1. `web/vite.config.ts` 的 `base: './'` 是必须的——Pages 项目站点在 `/<仓库名>/` 下，绝对路径资源会 404。
+  2. 工作流里**必须先跑仓库根目录的 `npm run check`**（数据是构建产物、不入库，网页端构建期要把它打包进去），再构建 `web/`。
+  3. `web/public/.nojekyll` 让 Pages 跳过 Jekyll 处理，别删。
+  改部署后本地验证的办法：`node tmp/serve-subpath.mjs web/dist 4180` 把产物挂在 `/labor-contract-guard/` 子路径下，再在浏览器里打开 `http://localhost:4180/labor-contract-guard/`——这模拟了 Pages 的布局，资源路径写错会立刻暴露。
 - 主来源（`role: primary`）抽取必须干净（条号连续、无抽取问题）；交叉来源允许有问题，它存在的意义就是暴露主来源的问题。**交叉校验报出差异时，先判断是源页面缺陷还是自己抽取错**——用 `npm run diff:sources -- <lawId> [条文号]` 看两侧原文，不要直接当成"来源不一致"记下来。
 - **范本里的待填写位是 `{{FILL}}` 标记**（由 `src/mark-blanks.ts` 从 `<u>` 包住的空白段识别出来）。比对范本与用户合同时，`{{FILL}}` 必须当作通配符，否则用户填好的内容会被误判成"条款被改写"。改动比对逻辑时不要把这个标记当普通文本。
 - **切分 `{{FILL}}` 必须大小写不敏感**。`normalizeForCompare` 会转小写，`{{FILL}}` 变成 `{{fill}}`；用大写标记去 split 会切不开，整段标记被转义进正则，导致所有含填空位的条款都匹配不上。这个坑已经踩过一次，见 `src/diff-template.ts` 的注释与 `tests/diff-template.test.ts` 里对应的断言。

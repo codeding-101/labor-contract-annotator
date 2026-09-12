@@ -20,6 +20,7 @@
 | 案例语料 | 完成（v0）：3 份案例文档共 25 个案例，为规则提供带裁判结果的真实措辞 |
 | 评分与报告 | 完成（v0）：透明评分＋报告组装＋文本渲染；示例合同自检满分零风险 |
 | 网页端 | 完成（v0）：纯前端应用，粘贴文本或上传 PDF 即可出报告；浏览器实测通过（桌面＋移动） |
+| 部署 | 已就绪：静态产物 + GitHub Actions 工作流，推到 `main` 即自动发布到 GitHub Pages |
 | 真实合同接入 | 部分完成：PDF（带文字层）已支持；Word 与图片未接 |
 
 ---
@@ -280,6 +281,34 @@ npm run dev        # 开发模式
 ```
 
 **构建前提**：网页端在构建期把 `data/statutes`、`data/templates`、`rules/` 直接打包进去，所以要先在仓库根目录跑一遍数据构建（`npm run check` 或 `npm run build:statutes && npm run build:templates`），否则 `web/` 构建会找不到数据。
+
+## 部署：GitHub Pages
+
+静态产物 + 一个 GitHub Actions 工作流（`.github/workflows/deploy-web.yml`）。推到 `main` 即自动构建并发布。
+
+**两个必须处理的坑，都已处理并实测：**
+
+1. **子路径基准。** 项目站点在 `/<仓库名>/` 下，而 Vite 默认产出绝对路径 `/assets/…`——直接部署上去资源会全部 404。`web/vite.config.ts` 里设了 `base: './'`，本地与任意子路径都能跑。这一点**实际验证过**：把 `web/dist` 挂到 `/labor-contract-guard/` 子路径下（模拟 Pages 布局），界面正常渲染、CSS 生效、PDF 的按需分块与 worker 也都加载成功。
+2. **数据不入库。** `data/` 是构建产物（在 `.gitignore` 里），而网页端在构建期把法条/范本/规则打包进去。所以工作流先跑仓库根目录的 `npm run check`（它会构建数据并跑全部断言与评测），再构建网页端。**顺带让这个工作流兼任质量闸门**：数据、评测或测试挂了就不会部署。
+
+另外放了 `web/public/.nojekyll`，让 Pages 跳过 Jekyll 处理。
+
+### 首次发布要做的三步
+
+仓库目前只有本地 git，没有远端（也没装 `gh` CLI），所以这三步需要你来：
+
+```bash
+# 1. 在 GitHub 上新建一个空仓库（不要勾选 README / .gitignore），然后
+git remote add origin https://github.com/codeding-101/labor-contract-guard.git
+git push -u origin main
+
+# 2. 仓库 Settings → Pages，把 Source 选成 "GitHub Actions"
+
+# 3. 等 Actions 跑完，地址是
+#    https://codeding-101.github.io/labor-contract-guard/
+```
+
+仓库名如果不是 `labor-contract-guard` 也没关系——`base: './'` 是相对的，不用改配置。
 
 ## 数据层实际发现并修掉的问题
 

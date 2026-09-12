@@ -1,0 +1,59 @@
+name: Deploy web to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            web/package-lock.json
+
+      # data/ 是构建产物、不入库，而网页端在构建期把法条/范本/规则打包进去。
+      # 所以必须先在仓库根目录跑 check（它会构建数据，并跑一遍断言与评测），再构建网页端。
+      # 顺带让这个工作流兼任质量闸门：数据、评测或测试挂了就不会部署。
+      - name: 数据构建与全部断言
+        run: |
+          npm ci
+          npm run check
+
+      - name: 构建网页端
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+
+      - name: 上传静态产物
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: 部署到 GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
