@@ -87,6 +87,20 @@ function reportWith(findings: RiskFinding[], undeterminedItems: UndeterminedItem
   })
 }
 
+test('发薪日期的关键词要覆盖真实写法（真实合同发现的缺陷）', () => {
+  const clauses: ContractClause[] = [
+    {
+      sectionTitle: null,
+      articleNo: 5,
+      label: '第五条',
+      text: '工资支付方式：甲方于每月15日以银行转账形式足额发放上月工资，遇法定节假日、休息日提前发放，无无故拖欠、克扣情形。',
+    },
+  ]
+  const row = resolveKeyInfo(clauses, extractFacts(clauses)).find((item) => item.label === '发薪日期')
+  // 原关键词表只有「发薪／支付日期／发放日期」，这句一个都不含，会误报「合同未提及」
+  assert.equal(row?.status, 'MENTIONED')
+})
+
 test('报告只做标注，不出评分、不给签署建议', () => {
   // 这是产品定位：把条款标出来让人自己看，不替用户下结论。
   // 用断言钉住，防止以后又把评分加回来。

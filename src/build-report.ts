@@ -77,7 +77,15 @@ const KEY_INFO_ITEMS: readonly { label: string; source: KeyInfoSource }[] = [
   { label: '基本工资', source: { kind: 'keyword', keywords: ['基本工资'] } },
   { label: '绩效工资', source: { kind: 'keyword', keywords: ['绩效'] } },
   { label: '奖金', source: { kind: 'keyword', keywords: ['奖金'] } },
-  { label: '发薪日期', source: { kind: 'keyword', keywords: ['发薪', '支付日期', '发放日期'] } },
+  {
+    label: '发薪日期',
+    // 关键词表要覆盖真实写法。实测被一句「工资支付方式：甲方于每月15日…发放上月工资」打穿过：
+    // 原表只有「发薪/支付日期/发放日期」，这句一个都不含，于是误报「合同未提及」。
+    source: {
+      kind: 'keyword',
+      keywords: ['发薪', '发放日', '支付日期', '发放日期', '支付方式', '发放方式', '工资发放', '工资支付', '发放工资', '支付工资'],
+    },
+  },
   { label: '工作时间', source: { kind: 'keyword', keywords: ['工作时间', '工时'] } },
   { label: '加班规则', source: { kind: 'keyword', keywords: ['加班'] } },
   { label: '休假制度', source: { kind: 'keyword', keywords: ['休假', '年休假', '请假'] } },
