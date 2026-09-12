@@ -27,6 +27,60 @@
           "note": "含 2012 年修正决定与修正后合并正文，作为交叉校验来源。已知三处页面缺陷：① 附则的章标题被误写成「第九章」并与第九十六条粘在同一块（抽取器已绕开）；② 第六十三条第二款多一个前引号，交叉校验会报为差异；③ 第九十八条后紧跟页面页脚（网站地图、ICP备案号等），抽取器按页脚标志词收尾，不并入条文。"
         }
       ]
+    },
+    "labor-law": {
+      "name": "中华人民共和国劳动法",
+      "shortName": "劳动法",
+      "idPrefix": "LL",
+      "sources": [
+        {
+          "id": "npc",
+          "file": "labor-law/npc.html",
+          "url": "http://www.npc.gov.cn/npc/c2/c30834/201905/t20190521_296651.html",
+          "publisher": "中国人大网（全国人民代表大会常务委员会）",
+          "publisherVerified": true,
+          "retrievedAt": "2026-09-12",
+          "role": "primary",
+          "note": "立法机关官网来源。抽取结果为连续的第 1 至第 107 条，抽取问题 0。该站页脚以「编 辑：」「责 编：」「相关文章」等条目各自成块收尾，抽取器按单块结束标志判定正文边界（否则会被并进第一百零七条）。"
+        },
+        {
+          "id": "samr",
+          "file": "labor-law/samr.html",
+          "url": "https://www.samr.gov.cn/zw/zfxxgk/fdzdgknr/bgt/art/2023/art_d9aa750028b14b99a776cb93726a360d.html",
+          "publisher": "国家市场监督管理总局",
+          "publisherVerified": true,
+          "retrievedAt": "2026-09-12",
+          "role": "cross-check",
+          "note": "中央机关来源，与《劳动合同法》主来源同站同格式，用于交叉校验。"
+        }
+      ]
+    },
+    "social-insurance-law": {
+      "name": "中华人民共和国社会保险法",
+      "shortName": "社会保险法",
+      "idPrefix": "SIL",
+      "sources": [
+        {
+          "id": "govcn",
+          "file": "social-insurance-law/govcn.html",
+          "url": "https://www.gov.cn/guoqing/2021-10/29/content_5647616.htm",
+          "publisher": "中国政府网（国务院）",
+          "publisherVerified": true,
+          "retrievedAt": "2026-09-12",
+          "role": "primary",
+          "note": "页面自述版本：2010 年 10 月 28 日通过，根据 2018 年 12 月 29 日全国人大常委会决定修正——即现行版本。"
+        },
+        {
+          "id": "chinatax",
+          "file": "social-insurance-law/chinatax.html",
+          "url": "https://fgk.chinatax.gov.cn/zcfgk/c100009/c5192937/content.html",
+          "publisher": "国家税务总局法规库",
+          "publisherVerified": true,
+          "retrievedAt": "2026-09-12",
+          "role": "cross-check",
+          "note": "中央机关法规库来源，版本说明与主来源一致，用于交叉校验。"
+        }
+      ]
     }
   }
 }

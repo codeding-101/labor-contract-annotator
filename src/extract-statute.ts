@@ -64,6 +64,46 @@ function looksLikeFooterBoundary(block: string): boolean {
   return hits >= 2
 }
 
+/**
+ * 正文结束标志：这些**单独出现**即可判定正文结束。
+ *
+ * 与上面的"一个块里出现多个页脚词"互补——政务网站的页脚常把每个条目各自成块，
+ * 那时按块计数永远凑不够两个词，页脚就会被并进最后一条（实测中国人大网把
+ * 「编 辑：…」「责 编：…」「-->」「相关文章」并进了《劳动法》第一百零七条）。
+ */
+const BODY_END_RES: readonly RegExp[] = [
+  /^编\s*辑[：:]/,
+  /^责\s*编[：:]/,
+  /^责任编辑/,
+  /^相关文章$/,
+  /^相关稿件$/,
+  /^上一篇/,
+  /^下一篇/,
+  /^打印本页$/,
+  /^【打印】/,
+  /^【我要纠错】/,
+  /^扫一扫/,
+  /^链接[：:]/,
+  /^中国政府网/,
+  /^版权所有/,
+  /^主办单位/,
+  /^承办单位/,
+  /^关闭窗口$/,
+  /^关闭本页$/,
+  /^分享到/,
+  /^来源[：:]/,
+  /^-->$/,
+  // 页脚必备字样，法律法规正文里不可能出现，命中即可判定正文结束
+  /ICP备/,
+  /公网安备/,
+  /网站标识码/,
+]
+
+function looksLikeBodyEnd(block: string): boolean {
+  if (BODY_END_RES.some((pattern) => pattern.test(block))) return true
+  return looksLikeFooterBoundary(block)
+}
+
 type Heading = { kind: 'chapter' | 'section'; label: string; rest: string }
 
 function matchHeading(block: string): Heading | null {
@@ -171,7 +211,7 @@ export function extractStatute(blocks: string[]): ExtractionResult {
       continue
     }
 
-    if (looksLikeFooterBoundary(block)) {
+    if (looksLikeBodyEnd(block)) {
       // 政务网站的页脚常紧跟最后一条出现。若当成续段并入，会污染最后一条的正文
       //（实测出现过把「网站地图 / 新ICP备…」并进「本法自2008年1月1日起施行」）。
       trailingBoundary = truncate(block, MAX_NOTE_LENGTH)
