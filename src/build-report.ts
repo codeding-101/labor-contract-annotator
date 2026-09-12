@@ -19,13 +19,15 @@ export type ReportRisk = {
  * 关键信息的取值状态。
  * - `VALUE`：抽到了数值（期限/金额/天数），`value` 是带单位的结果；
  * - `TEXT`：抽到了文本事实，`value` 就是合同原文片段——这类项"是什么"比"有没有"更有用；
+ * - `NOT_AGREED`：合同**明确写了本项不约定**（「不约定离职后竞业限制义务」），
+ *   `value` 是这句话本身。它不是"没认出来"，所以既不显示成"未能识别"，也不列进"无法判定"；
  * - `MENTIONED`：合同里有相关字样，但没能识别出具体值；`evidence` 带原文片段供人工核对；
  * - `NOT_FOUND`：合同里连相关字样都没有。
  *
- * `MENTIONED` 必须与 `NOT_FOUND` 分开：把"没认出来"说成"没写"会冤枉合同，
- * 把"有提及"说成"已核对"又会误导用户。
+ * 后三种必须分开：把"没认出来"说成"没写"会冤枉合同，把"有提及"说成"已核对"会误导用户，
+ * 把"明确不约定"说成"无法判定"则会让人以为工具漏查了。
  */
-export type KeyInfoStatus = 'VALUE' | 'TEXT' | 'MENTIONED' | 'NOT_FOUND'
+export type KeyInfoStatus = 'VALUE' | 'TEXT' | 'NOT_AGREED' | 'MENTIONED' | 'NOT_FOUND'
 
 export type KeyInfoRow = {
   label: string
@@ -219,6 +221,15 @@ function resolveRow(
   if (fact.textValue !== null) {
     return { label, value: fact.textValue, status: 'TEXT', evidence: fact.evidence?.text ?? null }
   }
+  // 合同明确写了"本项不约定"：把这句话本身当结果给出来，而不是含糊地说"未能识别"
+  if (fact.method === 'NOT_AGREED') {
+    return {
+      label,
+      value: fact.reason ?? '合同明确不约定',
+      status: 'NOT_AGREED',
+      evidence: fact.evidence?.text ?? null,
+    }
+  }
   return mentionRow(label, clauses, source.mention)
 }
 
@@ -228,7 +239,7 @@ export function resolveKeyInfo(clauses: ContractClause[], facts: FactSet): KeyIn
 }
 
 function describeRow(row: KeyInfoRow): string {
-  if (row.status === 'VALUE' || row.status === 'TEXT') return row.value ?? '—'
+  if (row.status === 'VALUE' || row.status === 'TEXT' || row.status === 'NOT_AGREED') return row.value ?? '—'
   if (row.status === 'MENTIONED') {
     return row.evidence === null
       ? '有相关约定，但本工具没能识别出具体内容'

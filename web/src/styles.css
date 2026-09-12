@@ -418,6 +418,10 @@ dd {
   color: var(--muted);
 }
 
+.key-info tr.not-agreed td {
+  color: var(--muted);
+}
+
 .empty {
   color: var(--good);
   margin: 0;

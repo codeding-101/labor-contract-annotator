@@ -191,9 +191,10 @@ function main(): number {
     })
     const valued = sampleReport.keyInfo.filter((row) => row.status === 'VALUE' || row.status === 'TEXT').length
     const mentioned = sampleReport.keyInfo.filter((row) => row.status === 'MENTIONED')
+    const notAgreed = sampleReport.keyInfo.filter((row) => row.status === 'NOT_AGREED')
     const missing = sampleReport.keyInfo.filter((row) => row.status === 'NOT_FOUND').length
     console.log(
-      `  报告层：标注 ${annotated(sampleReport)} 处  无法判定 ${sampleReport.undetermined.length}  关键信息取值 ${valued} 项、仅提及 ${mentioned.length} 项、未提及 ${missing} 项`,
+      `  报告层：标注 ${annotated(sampleReport)} 处  无法判定 ${sampleReport.undetermined.length}  关键信息取值 ${valued} 项、仅提及 ${mentioned.length} 项、明确不约定 ${notAgreed.length} 项、未提及 ${missing} 项`,
     )
     if (annotated(sampleReport) > 0) {
       problems.push(`${file}: 官方范本派生的合同不应有任何标注（应为 0，疑似误报），实际 ${annotated(sampleReport)} 处`)

@@ -8,7 +8,7 @@ const LEVEL_LABEL: Record<string, string> = { red: '严重', yellow: '需关注'
  * 但合同里有相关字样时才落到 `MENTIONED`，此时把原文摘要一起给出来，让人能自己核对。
  */
 function describeKeyInfo(row: KeyInfoRow): string {
-  if (row.status === 'VALUE' || row.status === 'TEXT') return row.value ?? '—'
+  if (row.status === 'VALUE' || row.status === 'TEXT' || row.status === 'NOT_AGREED') return row.value ?? '—'
   if (row.status === 'MENTIONED') {
     return row.evidence === null ? '有相关约定，但未能识别出具体内容' : `有相关约定，但未能识别出具体内容：${row.evidence}`
   }
@@ -98,7 +98,18 @@ export function ReportView({ report }: { report: ContractReport }): React.ReactE
         <table className="card key-info">
           <tbody>
             {report.keyInfo.map((row) => (
-              <tr key={row.label} className={row.status === 'NOT_FOUND' ? 'missing' : row.status === 'MENTIONED' ? 'mentioned' : undefined}>
+              <tr
+                key={row.label}
+                className={
+                  row.status === 'NOT_FOUND'
+                    ? 'missing'
+                    : row.status === 'MENTIONED'
+                      ? 'mentioned'
+                      : row.status === 'NOT_AGREED'
+                        ? 'not-agreed'
+                        : undefined
+                }
+              >
                 <th scope="row">{row.label}</th>
                 <td>{describeKeyInfo(row)}</td>
               </tr>

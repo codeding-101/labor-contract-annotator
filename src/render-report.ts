@@ -4,7 +4,7 @@ import type { RiskLevel } from './schema.ts'
 const LEVEL_LABELS: Readonly<Record<RiskLevel, string>> = { red: '🔴 严重', yellow: '🟡 需关注', blue: '🔵 提示' }
 
 function describeRow(row: KeyInfoRow): string {
-  if (row.status === 'VALUE' || row.status === 'TEXT') return row.value ?? '—'
+  if (row.status === 'VALUE' || row.status === 'TEXT' || row.status === 'NOT_AGREED') return row.value ?? '—'
   if (row.status === 'MENTIONED') {
     return row.evidence === null
       ? '有相关约定，但本工具没能识别出具体内容'

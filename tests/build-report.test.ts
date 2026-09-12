@@ -147,6 +147,21 @@ test('合同有相关字样但取不出值时，摘出原文而不是只写"有�
   assert.equal(row?.evidence, '乙方依法享有法定节假日、带薪年休假、婚丧假、产假等假期。')
 })
 
+test('合同明确不约定的项显示这句话本身，而不是"未能识别"', () => {
+  const clauses: ContractClause[] = [
+    {
+      sectionTitle: null,
+      articleNo: 9,
+      label: '第九条',
+      text: '本岗位不属于企业高管、核心技术及涉密岗位，不约定离职后竞业限制义务。',
+    },
+  ]
+  const row = resolveKeyInfo(clauses, extractFacts(clauses)).find((item) => item.label === '竞业限制期限')
+
+  assert.equal(row?.status, 'NOT_AGREED')
+  assert.equal(row?.value, '合同明确不约定竞业限制义务')
+})
+
 test('标题是唯一线索时仍报"有提及"，不误报"未提及"', () => {
   const clauses: ContractClause[] = [{ sectionTitle: null, articleNo: null, label: '第四条', text: '四、违约责任' }]
   const row = resolveKeyInfo(clauses, extractFacts(clauses)).find((item) => item.label === '违约责任')

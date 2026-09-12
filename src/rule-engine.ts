@@ -31,7 +31,10 @@ export type RiskFinding = {
   note?: string
 }
 
-/** 抽不到事实时的结果：既不是违规，也不是合规。 */
+/**
+ * 抽不到事实时的结果：既不是违规，也不是合规。
+ * 注意与"合同明确写了本项不约定"区分开——后者规则**不适用**，不进这个列表。
+ */
 export type UndeterminedItem = {
   ruleCode: string
   title: string
@@ -57,6 +60,20 @@ function negationNote(text: string): string | undefined {
   return NEGATION_MARKERS.some((marker) => text.includes(marker))
     ? '该条款含否定表述，请确认是否确实约定了该项内容'
     : undefined
+}
+
+/**
+ * 合同是否**明确写了本项不约定**。
+ *
+ * 这种情形下规则不适用：既不该报违规，也不该列进"无法判定"——
+ * 「竞业限制期限超过两年：合同明确不约定竞业限制义务」这种写法自相矛盾，
+ * 会让人以为工具漏查了，实际是这一项根本不存在。
+ *
+ * 只看规则的主体事项（`field`）：例如"合同期限不确定"只说明分档上限算不出来，
+ * 那是真的无法判定，不能当成"不适用"放过去。
+ */
+function explicitlyNotAgreed(facts: Partial<Record<FactKey, Fact>>, key: FactKey): boolean {
+  return facts[key]?.method === 'NOT_AGREED'
 }
 
 function matchesPattern(
@@ -100,6 +117,8 @@ function evidenceFromFact(fact: Fact, fallback: string): RiskEvidence {
  * - 只做确定性判定，能解释、能写单测、零推理成本。
  * - 法条原文由 lookup 从法条库取，规则只给 ID；取不到就抛错，不放过没有依据的风险项。
  * - **抽不到事实时产出 undetermined，不当作合规也不当作违规**——这条是抽取值不出错的前提。
+ * - **合同明确写了"本项不约定"时规则不适用**（例如"不约定竞业限制义务"），此时既不报违规、
+ *   也不列进 undetermined：把确定的事说成"无法判定"是另一种误导。
  * - 判定方式由 TypeScript 穷尽性检查兜底：新增 checkType 时这里会直接编译失败，不会静默漏掉。
  */
 export function evaluateRules(
@@ -136,6 +155,7 @@ export function evaluateRules(
     } else if (rule.checkType === 'NUMERIC_COMPARE') {
       const fact = facts[rule.params.field]
       if (fact === undefined || fact.value === null) {
+        if (explicitlyNotAgreed(facts, rule.params.field)) continue
         undetermined.push({
           ruleCode: rule.code,
           title: rule.title,
@@ -152,6 +172,7 @@ export function evaluateRules(
       const measured = facts[rule.params.field]
       const base = facts[rule.params.ratioOf]
       if (measured === undefined || measured.value === null || base === undefined || base.value === null) {
+        if (explicitlyNotAgreed(facts, rule.params.field)) continue
         undetermined.push({
           ruleCode: rule.code,
           title: rule.title,
@@ -172,6 +193,7 @@ export function evaluateRules(
       const measured = facts[rule.params.field]
       const depender = facts[rule.params.dependsOn]
       if (measured === undefined || measured.value === null || depender === undefined || depender.value === null) {
+        if (explicitlyNotAgreed(facts, rule.params.field)) continue
         undetermined.push({
           ruleCode: rule.code,
           title: rule.title,

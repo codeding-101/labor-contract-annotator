@@ -90,6 +90,8 @@ test('明确写「不约定竞业限制」时不该再去抽期限（真实合�
     },
   ])
   assert.equal(facts.nonCompeteMonths.value, null)
+  // 这不是"没认出来"，而是一条确定的结论：规则应当判为不适用
+  assert.equal(facts.nonCompeteMonths.method, 'NOT_AGREED')
   assert.match(facts.nonCompeteMonths.reason ?? '', /不约定/)
 })
 

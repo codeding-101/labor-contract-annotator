@@ -57,6 +57,35 @@ test('每条规则自带的正反例都能判对', () => {
   assert.ok(checked >= 20, `用例太少，只跑了 ${checked} 条`)
 })
 
+test('合同明确不约定某项时，规则不适用：既不报违规，也不列进"无法判定"', () => {
+  // 「竞业限制期限超过两年：合同明确不约定竞业限制义务」这种并列是自相矛盾的，
+  // 会让人以为工具漏查了——实际是这一项根本不存在，规则不适用
+  const clauses = clausesOf('本岗位不属于企业高管、核心技术及涉密岗位，不约定离职后竞业限制义务。', undefined)
+  const result = evaluateRules([ruleByCode('NON_COMPETE_TOO_LONG')], clauses, lookup, extractFacts(clauses))
+
+  assert.equal(result.findings.length, 0)
+  assert.equal(result.undetermined.length, 0)
+})
+
+test('写了竞业限制但没给期限时，仍然如实报"无法判定"', () => {
+  // 与上一条的差别要守住：含糊不清是"无法判定"，明确不约定才是"不适用"
+  const clauses = clausesOf('乙方离职后应遵守竞业限制义务，具体期限另行协商。', undefined)
+  const result = evaluateRules([ruleByCode('NON_COMPETE_TOO_LONG')], clauses, lookup, extractFacts(clauses))
+
+  assert.equal(result.findings.length, 0)
+  assert.equal(result.undetermined.length, 1)
+  assert.equal(result.undetermined[0]?.ruleCode, 'NON_COMPETE_TOO_LONG')
+})
+
+test('合同期限不确定时仍报"无法判定"，不能当成"不适用"放过去', () => {
+  // 分档上限算不出来是真的无法判定；只有规则的主体事项本身"明确不约定"才叫不适用
+  const clauses = clausesOf('合同期限：自2026年7月1日起至2027年7月1日止；续订期：自2027年7月1日起至2028年7月1日止。试用期六个月。', undefined)
+  const result = evaluateRules([ruleByCode('PROBATION_TOO_LONG')], clauses, lookup, extractFacts(clauses))
+
+  assert.equal(result.findings.length, 0)
+  assert.equal(result.undetermined.length, 1)
+})
+
 test('风险项里的法条原文来自 lookup，规则里不复制条文', () => {
   const rule = ruleByCode('UNLAWFUL_LIQUIDATED_DAMAGES')
   const result = runCase(rule, {
@@ -89,8 +118,7 @@ test('含否定表述的命中不被抑制，但带人工确认提示', () => {
   assert.match(finding.note ?? '', /否定表述/)
 })
 
-test('抽不到事实时产出 undetermined，既不算合规也不算违规', () => {
-  const rule = ruleByCode('PROBATION_TOO_LONG')
+test('抽不到事实时产出 undetermined，既不算合规也不算违规', () => {  const rule = ruleByCode('PROBATION_TOO_LONG')
   // 合同里只写了试用期，没写合同期限 → 分档比较缺一个输入
   const result = runCase(rule, { text: '双方约定试用期三个月。', expect: 'UNDETERMINED' })
   assert.equal(result.findings.length, 0, '不应当判成违规')

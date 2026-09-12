@@ -46,8 +46,15 @@ export type Fact = {
   textValue: string | null
   unit: string | null
   evidence: FactEvidence | null
-  method: 'EXPLICIT' | 'DATE_RANGE' | 'DERIVED' | 'UNRECOGNIZED'
-  /** method 为 UNRECOGNIZED 时说明原因，便于人工判断是合同写法特殊还是抽取器缺模式。 */
+  /**
+   * - `EXPLICIT` / `DATE_RANGE` / `DERIVED`：取到了值，`method` 说明是怎么取的；
+   * - `NOT_AGREED`：合同**明确写了这一项不约定**（例如「本岗位…不约定离职后竞业限制义务」）。
+   *   这不是"没认出来"，而是一条确定的事实：依赖它的规则应当判为**不适用**，
+   *   既不该报违规，也不该出现在"无法判定"里（那会让用户以为工具没查）；
+   * - `UNRECOGNIZED`：写了相关内容但没认出来，或根本没写。依赖它的规则只能报"无法判定"。
+   */
+  method: 'EXPLICIT' | 'DATE_RANGE' | 'DERIVED' | 'NOT_AGREED' | 'UNRECOGNIZED'
+  /** method 为 UNRECOGNIZED / NOT_AGREED 时说明原因，便于人工判断是合同写法特殊还是抽取器缺模式。 */
   reason?: string
 }
 
@@ -160,6 +167,11 @@ function unrecognized(key: FactKey, reason: string, evidence: FactEvidence | nul
 /** 文本类事实：值就是合同原文片段。 */
 function textFact(key: FactKey, textValue: string, evidence: FactEvidence): Fact {
   return { key, value: null, textValue, unit: null, evidence, method: 'EXPLICIT' }
+}
+
+/** 合同明确写了"本项不约定"：不是没认出来，而是一条确定的事实。 */
+function notAgreed(key: FactKey, reason: string, evidence: FactEvidence): Fact {
+  return { key, value: null, textValue: null, unit: null, evidence, method: 'NOT_AGREED', reason }
 }
 
 function extractContractTerm(clauses: ContractClause[]): Fact {
@@ -370,9 +382,9 @@ function extractNonCompete(clauses: ContractClause[]): Fact {
   for (const clause of clauses) {
     if (!/竞业限制/.test(clause.text)) continue
 
-    // 明确写「不约定竞业限制」的条款，不该再去找期限
+    // 明确写「不约定竞业限制」的条款：这是一条确定的结论，不该再去找期限
     if (/不约定[^。；]{0,20}?竞业限制|竞业限制[^。；]{0,20}?不(?:适用|约定)/.test(clause.text)) {
-      return unrecognized('nonCompeteMonths', '合同明确不约定竞业限制义务', {
+      return notAgreed('nonCompeteMonths', '合同明确不约定竞业限制义务', {
         clauseLabel: clause.label,
         text: clause.text.slice(0, 200),
       })
