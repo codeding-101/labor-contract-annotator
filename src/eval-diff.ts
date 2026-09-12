@@ -3,8 +3,10 @@ import { join } from 'node:path'
 import { diffAgainstTemplate, flattenTemplate, type ContractClause, type DiffKind, type TemplateClause } from './diff-template.ts'
 import { extractFacts, FACT_META, type FactKey } from './extract-facts.ts'
 import { fillBlanks } from './fill-template.ts'
-import { evaluateRules, type StatuteRef, type StatuteLookup } from './rule-engine.ts'
-import { ContractTemplateSchema, RiskRuleSetSchema, StatuteSchema } from './schema.ts'
+import { buildReport } from './build-report.ts'
+import { evaluateRules } from './rule-engine.ts'
+import { loadStatutes } from './load-statutes.ts'
+import { ContractTemplateSchema, RiskRuleSetSchema } from './schema.ts'
 
 const ROOT = join(import.meta.dirname, '..')
 const DATA_DIR = join(ROOT, 'data', 'templates')
@@ -104,23 +106,6 @@ function describe(counts: Record<DiffKind, number>): string {
   return parts.length === 0 ? '无差异' : parts.join(' ')
 }
 
-function loadStatuteLookup(): StatuteLookup {
-  const dir = join(ROOT, 'data', 'statutes')
-  const byId = new Map<string, StatuteRef>()
-  for (const file of readdirSync(dir).filter((name) => name.endsWith('.json'))) {
-    const statute = StatuteSchema.parse(JSON.parse(readFileSync(join(dir, file), 'utf8')))
-    for (const article of statute.articles) {
-      byId.set(article.id, {
-        id: article.id,
-        lawName: statute.name,
-        articleLabel: article.articleLabel,
-        text: article.text,
-      })
-    }
-  }
-  return (id) => byId.get(id) ?? null
-}
-
 function main(): number {
   let files: string[]
   try {
@@ -164,7 +149,7 @@ function main(): number {
     const ruleSet = RiskRuleSetSchema.parse(
       JSON.parse(readFileSync(join(ROOT, 'rules', 'labor-contract-law.json'), 'utf8')),
     )
-    const ruleResult = evaluateRules(ruleSet.rules, sampleContract, loadStatuteLookup(), sampleFacts)
+    const ruleResult = evaluateRules(ruleSet.rules, sampleContract, loadStatutes().lookup, sampleFacts)
     console.log(
       `  规则跑在示例合同上：风险项 ${ruleResult.findings.length}  无法判定 ${ruleResult.undetermined.length}`,
     )
@@ -175,6 +160,26 @@ function main(): number {
       for (const finding of ruleResult.findings) {
         console.log(`      ${finding.ruleCode}  证据：${finding.evidence.text.slice(0, 60)}`)
       }
+    }
+
+    // 报告层闸门：合规范本派生的合同应当满分、零风险，且关键信息里的事实项都能取到值。
+    const sampleReport = buildReport({
+      template,
+      contractClauses: sampleContract,
+      diff: diffAgainstTemplate(templateClauses, sampleContract),
+      facts: sampleFacts,
+      ruleResult,
+      ruleSetVersion: ruleSet.ruleSetVersion,
+    })
+    const valued = sampleReport.keyInfo.filter((row) => row.status === 'VALUE').length
+    const unrecognized = sampleReport.keyInfo.filter((row) => row.status === 'UNRECOGNIZED').length
+    console.log(
+      `  报告层：评分 ${sampleReport.score.score}  风险 ${sampleReport.risks.length}  无法判定 ${sampleReport.undetermined.length}  关键信息取值 ${valued} 项、未识别 ${unrecognized} 项`,
+    )
+    if (sampleReport.score.score !== 100 || sampleReport.risks.length > 0) {
+      problems.push(
+        `${file}: 合规范本的报告应为满分且零风险，实际 ${sampleReport.score.score} 分 / ${sampleReport.risks.length} 条风险`,
+      )
     }
 
     for (const evalCase of buildCases(templateClauses)) {
