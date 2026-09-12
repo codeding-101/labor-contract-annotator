@@ -2,6 +2,7 @@
   "name": "labor-contract-guard",
   "version": "0.1.0",
   "private": true,
+  "license": "Apache-2.0",
   "type": "module",
   "description": "本地化、开源的劳动合同风险检查工具：官方范本比对 + 规则引擎，文件不离开设备",
   "engines": {

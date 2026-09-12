@@ -1,6 +1,7 @@
 {
   "name": "labor-contract-guard-web",
   "private": true,
+  "license": "Apache-2.0",
   "version": "0.1.0",
   "type": "module",
   "description": "劳动合同风险检查工具的网页端：全部在浏览器里跑，合同内容不离开设备",
