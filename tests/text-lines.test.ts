@@ -52,11 +52,11 @@ test('字形映射到控制字符（大量 SOH）时判为不可用，并剥掉�
   const good = '劳动合同期限为三年，试用期三个月，月工资8000元，甲方依法缴纳社会保险。'
   const broken = good.split('').join('\u0001')
 
-  const clean = assessExtractedText(good)
+  const clean = assessExtractedText(good, 0.4, 10)
   assert.equal(clean.usable, true)
   assert.equal(clean.removedControlChars, 0)
 
-  const dirty = assessExtractedText(broken)
+  const dirty = assessExtractedText(broken, 0.4, 10)
   assert.equal(dirty.usable, false, '控制字符占比过高应判为不可用')
   assert.ok(dirty.removedControlChars > 30)
   assert.equal(dirty.text.includes('\u0001'), false, '正文里不该留下控制字符')
