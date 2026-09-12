@@ -1,5 +1,5 @@
 import type { ContractClause } from './diff-template.ts'
-import { FACT_META, type FactKey, type FactSet } from './extract-facts.ts'
+import { FACT_META, sentenceAround, type FactKey, type FactSet } from './extract-facts.ts'
 import type { RiskEvidence, RuleEngineResult, StatuteRef, UndeterminedItem } from './rule-engine.ts'
 import type { ContractTemplate, RiskLevel } from './schema.ts'
 
@@ -147,18 +147,27 @@ const DISCLAIMERS: readonly string[] = [
  * 没能取出值时，用关键词判断合同里到底有没有相关内容。
  * 注意这里只用于区分「有提及」和「未提及」，**绝不**用它填值——关键词证明不了条款内容是什么。
  *
- * 摘录以命中的关键词为中心取一小段：条款动辄几百字，从头截会摘出跟该项毫不相干的原文。
+ * 摘录用**最聚焦的那一句**：把每个关键词的每一次出现都取成一句，选最短的那句。
+ * 关键词经常先出现在章节标题里（「保密与竞业限制」「工作内容和工作地点」），
+ * 按出现顺序取会把标题连同无关正文摘出来；而"最短的、含该关键词的完整句"通常正是讲这件事的那句。
  */
 function mentionRow(label: string, clauses: ContractClause[], keywords: readonly string[]): KeyInfoRow {
+  let best: string | null = null
+
   for (const clause of clauses) {
-    const hits = keywords.map((keyword) => clause.text.indexOf(keyword)).filter((index) => index !== -1)
-    if (hits.length === 0) continue
-    const index = Math.min(...hits)
-    const from = Math.max(0, index - 12)
-    const excerpt = `${from > 0 ? '…' : ''}${clause.text.slice(from, index + 60).replace(/\s+/g, ' ')}`
-    return { label, value: null, status: 'MENTIONED', evidence: excerpt.slice(0, 100) }
+    for (const keyword of keywords) {
+      let index = clause.text.indexOf(keyword)
+      while (index !== -1) {
+        const sentence = sentenceAround(clause.text, index, 100)
+        if (sentence.length >= 6 && (best === null || sentence.length < best.length)) best = sentence
+        index = clause.text.indexOf(keyword, index + keyword.length)
+      }
+    }
   }
-  return { label, value: null, status: 'NOT_FOUND', evidence: null }
+
+  return best === null
+    ? { label, value: null, status: 'NOT_FOUND', evidence: null }
+    : { label, value: null, status: 'MENTIONED', evidence: best }
 }
 
 function resolveRow(

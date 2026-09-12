@@ -195,3 +195,64 @@ test('荒谬的数值一律拒绝，宁可报未识别', () => {
   // 每日工作时间不可能是 26 小时
   assert.equal(extractFacts(clause('每日工作时间为26小时。')).dailyWorkHours.value, null)
 })
+
+test('期限条款里的试用期区间不算合同期限（真实合同发现的缺陷）', () => {
+  // 真实合法合同第一条：合同期限与试用期各有一个日期区间，同处一条
+  const text =
+    '本合同采用固定期限劳动合同形式：自2026年09月15日起至2029年09月14日止。' +
+    '其中试用期自2026年09月15日起至2027年03月14日止（试用期6个月，符合3年以上劳动合同试用期法定上限规定）。'
+  const facts = extractFacts(clause(text))
+
+  assert.equal(facts.contractTermMonths.value, 36)
+  assert.match(facts.contractTermMonths.evidence?.text ?? '', /2029年09月14日/)
+})
+
+test('起止日期含首尾两天：2026-09-15 至 2029-09-14 是整三年', () => {
+  // 按"经过时长"算会得到 35 个月，那就落进「一年以上不满三年」档，
+  // 把合法的 6 个月试用期误判成超长（这正是合同自己写明的"3年以上"）
+  const facts = extractFacts(clause('本合同期限：自2026年9月15日起至2029年9月14日止。'))
+  assert.equal(facts.contractTermMonths.value, 36)
+})
+
+test('标签出现多次时，跳过后面没有金额的那几次（真实合同发现的缺陷）', () => {
+  // 「不低于转正工资80%」里的「转正」后面只有百分数。只认第一次出现就会整条放弃，
+  // 于是退到别的条款抓到了「每月200元餐补」——月工资报成 200 元
+  const text =
+    '1.试用期工资：人民币4800元/月（不低于转正工资80%，且高于当地最低工资标准）。' +
+    '2.试用期满转正工资：人民币6000元/月，包含基本工资4500元、绩效工资1500元。' +
+    '3.工资支付方式：甲方于每月15日以银行转账形式足额发放上月工资。'
+  const facts = extractFacts([
+    { sectionTitle: null, articleNo: 4, label: '第四条', text },
+    {
+      sectionTitle: null,
+      articleNo: 5,
+      label: '第五条',
+      text: '3.额外福利待遇：每月200元餐补、100元交通补贴；转正后享受年度体检、节日福利、年终绩效奖金。',
+    },
+  ])
+
+  assert.equal(facts.monthlyWage.value, 6000)
+  assert.equal(facts.probationMonthlyWage.value, 4800)
+  assert.equal(facts.baseWage.value, 4500)
+})
+
+test('工作地点取"约定式"写法，不取章节标题（真实合同发现的缺陷）', () => {
+  const clauses: ContractClause[] = [
+    { sectionTitle: null, articleNo: 2, label: '第二条', text: '工作内容和工作地点1.乙方同意根据甲方工作需要，担任新媒体运营专员岗位工作。' },
+    {
+      sectionTitle: null,
+      articleNo: 2,
+      label: '第二条',
+      text: '4.乙方固定工作地点：江苏省南京市鼓楼区中山北路88号恒基大厦1205室。甲方如需变更工作地点，需提前与乙方协商一致。',
+    },
+  ]
+  const facts = extractFacts(clauses)
+
+  // 章节标题里也有「工作地点」四个字，按出现顺序取会把标题连同正文摘出来。
+  // 值是合同原句（含列表序号），报告里要能对着合同找到这一句
+  assert.equal(facts.workLocationText.textValue, '4.乙方固定工作地点：江苏省南京市鼓楼区中山北路88号恒基大厦1205室')
+
+  // 仍然没有约定式写法时，退回通用标签总比报"未提及"好
+  const fallback = extractFacts(clause('工作地点另行通知。'))
+  assert.equal(fallback.workLocationText.textValue, '工作地点另行通知')
+})

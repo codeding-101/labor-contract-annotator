@@ -143,10 +143,22 @@ test('合同有相关字样但取不出值时，摘出原文而不是只写"有�
   ]
   const row = resolveKeyInfo(clauses, extractFacts(clauses)).find((item) => item.label === '年休假')
   assert.equal(row?.status, 'MENTIONED')
-  // 摘录以命中的词为中心，标出前面还有省略的原文——从条款开头截会摘出与该项无关的工时制度文字
-  assert.equal(row?.evidence?.startsWith('…'), true)
-  assert.match(row?.evidence ?? '', /年休假/)
-  assert.ok(!(row?.evidence ?? '').includes('甲方安排乙方执行'))
+  // 摘的是含关键词的**那一句**，而不是从条款开头截一段无关的工时制度文字
+  assert.equal(row?.evidence, '乙方依法享有法定节假日、带薪年休假、婚丧假、产假等假期')
+})
+
+test('关键词先出现在章节标题里时，摘更聚焦的那一句', () => {
+  const clauses: ContractClause[] = [
+    {
+      sectionTitle: null,
+      articleNo: 9,
+      label: '第九条',
+      text: '保密与竞业限制1.乙方在职期间，需严格保密甲方商业信息、客户资源、运营方案、内部数据等商业秘密，不得擅自泄露、外传、私自使用。2.本岗位不属于企业高管、核心技术及涉密岗位，不约定离职后竞业限制义务。',
+    },
+  ]
+  const row = resolveKeyInfo(clauses, extractFacts(clauses)).find((item) => item.label === '竞业限制期限')
+  // 按出现顺序取会摘到章节标题连带第一条正文，那句跟"竞业限制期限"无关
+  assert.match(row?.evidence ?? '', /不约定离职后竞业限制义务/)
 })
 
 test('工资结构由基本工资、绩效工资、奖金合成', () => {

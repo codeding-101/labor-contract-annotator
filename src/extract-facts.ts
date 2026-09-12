@@ -62,9 +62,20 @@ function toNumber(raw: string): number | null {
   return cnToInt(cleaned)
 }
 
+/**
+ * 起止日期之间的完整月数。
+ *
+ * 合同里的「自 X 起至 Y 止」是**含首尾两天**的期间：2026-09-15 至 2029-09-14 就是整三年。
+ * 所以算月数时把终止日当作含当天（+1 天）。不这么做的话，同一份合同会算成 35 个月，
+ * 落进《劳动合同法》第十九条「一年以上不满三年」那一档，把合法的 6 个月试用期误判成超长。
+ */
 function monthsBetween(y1: number, m1: number, d1: number, y2: number, m2: number, d2: number): number {
-  let months = (y2 - y1) * 12 + (m2 - m1)
-  if (d2 < d1) months -= 1
+  const start = Date.UTC(y1, m1 - 1, d1)
+  const end = Date.UTC(y2, m2 - 1, d2 + 1)
+  const startDate = new Date(start)
+  const endDate = new Date(end)
+  let months = (endDate.getUTCFullYear() - startDate.getUTCFullYear()) * 12 + (endDate.getUTCMonth() - startDate.getUTCMonth())
+  if (endDate.getUTCDate() < startDate.getUTCDate()) months -= 1
   return months
 }
 
@@ -91,22 +102,51 @@ export function pickOption(text: string): string {
   return chosen ?? text
 }
 
-type DateRange = { years: number; months: number }
+type DateRange = { index: number; months: number; text: string }
 
-/** 在一段文本里找日期区间；找到多个说明仍有歧义，返回 'AMBIGUOUS' 而不是猜一个。 */
-function findDateRange(text: string): DateRange | 'AMBIGUOUS' | null {
+/** 在一段文本里找出所有日期区间，并记下各自位置。多个区间要不要消歧由调用方决定。 */
+function findDateRanges(text: string): DateRange[] {
   const pattern = new RegExp(`自?\\s*${DATE_PATTERN}\\s*起?\\s*至\\s*${DATE_PATTERN}\\s*止`, 'g')
-  const found = [...text.matchAll(pattern)]
-  if (found.length === 0) return null
-  if (found.length > 1) return 'AMBIGUOUS'
+  const ranges: DateRange[] = []
+  for (const match of text.matchAll(pattern)) {
+    const numbers = match.slice(1, 7).map((part) => Number(part))
+    const [y1, m1, d1, y2, m2, d2] = numbers
+    if (
+      y1 === undefined ||
+      m1 === undefined ||
+      d1 === undefined ||
+      y2 === undefined ||
+      m2 === undefined ||
+      d2 === undefined
+    ) {
+      continue
+    }
+    ranges.push({ index: match.index ?? 0, months: monthsBetween(y1, m1, d1, y2, m2, d2), text: match[0] })
+  }
+  return ranges
+}
 
-  const match = found[0]
-  if (match === undefined) return null
-  const numbers = match.slice(1, 7).map((part) => Number(part))
-  const [y1, m1, d1, y2, m2, d2] = numbers
-  if (y1 === undefined || m1 === undefined || d1 === undefined) return null
-  if (y2 === undefined || m2 === undefined || d2 === undefined) return null
-  return { years: y2 - y1, months: monthsBetween(y1, m1, d1, y2, m2, d2) }
+/** 只有一个区间时才用它；多个区间说明仍有歧义，返回 'AMBIGUOUS' 而不是猜一个。 */
+function findDateRange(text: string): DateRange | 'AMBIGUOUS' | null {
+  const ranges = findDateRanges(text)
+  if (ranges.length === 0) return null
+  if (ranges.length > 1) return 'AMBIGUOUS'
+  return ranges[0] ?? null
+}
+
+/**
+ * 一条条款里有多个日期区间时，先按上下文排除**试用期**那一处：
+ * 「本合同…自 X 起至 Y 止。其中试用期自 X 起至 Z 止」说的是两件事，合同期限是前者。
+ * 剩下的还不唯一就报歧义——不猜。
+ */
+function pickTermRange(text: string, ranges: readonly DateRange[]): DateRange | 'AMBIGUOUS' | null {
+  if (ranges.length === 0) return null
+  if (ranges.length === 1) return ranges[0] ?? null
+  const outsideProbation = ranges.filter(
+    (range) => !/试用期/.test(text.slice(Math.max(0, range.index - 12), range.index)),
+  )
+  if (outsideProbation.length === 1) return outsideProbation[0] ?? null
+  return 'AMBIGUOUS'
 }
 
 function fact(key: FactKey, value: number, unit: string, evidence: FactEvidence, method: Fact['method']): Fact {
@@ -126,7 +166,7 @@ function extractContractTerm(clauses: ContractClause[]): Fact {
   for (const clause of clauses) {
     if (!/期限/.test(clause.text)) continue
     const scoped = pickOption(clause.text)
-    const range = findDateRange(scoped)
+    const range = pickTermRange(scoped, findDateRanges(scoped))
     if (range === 'AMBIGUOUS') {
       return unrecognized('contractTermMonths', '条款含多个期限区间，无法确定按哪一个计算', {
         clauseLabel: clause.label,
@@ -134,7 +174,7 @@ function extractContractTerm(clauses: ContractClause[]): Fact {
       })
     }
     if (range !== null) {
-      return fact('contractTermMonths', range.months, '月', { clauseLabel: clause.label, text: scoped.slice(0, 200) }, 'DATE_RANGE')
+      return fact('contractTermMonths', range.months, '月', { clauseLabel: clause.label, text: range.text }, 'DATE_RANGE')
     }
 
     const years = new RegExp(`期限[为是]?\\s*${CN_OR_DIGIT}\\s*年`).exec(scoped)
@@ -228,31 +268,38 @@ const AMOUNT_PATTERN = /([0-9][0-9,，]*)\s*元/
 const AMOUNT_STOP = /[，,；;。\n]/
 
 /**
- * 带标签的金额抽取：先定位标签，再取标签**后面第一个**金额，且不越过标点。
+ * 带标签的金额抽取：定位标签，取标签**后面第一个**金额，且不越过标点。
  *
  * 不能用「这一条里最后一个金额」这种按位置猜的启发式。实测被一份真实合同打穿过：
  * 「试用期工资：人民币4800元/月，试用期满转正工资：人民币6000元/月，包含基本工资4500元、绩效工资1500元」
  * ——取最后一个金额得到 1500，那是绩效工资，结论完全错了。
+ *
+ * 标签可能出现多次，且**前面的那几次不一定带金额**：同一份合同里
+ * 「试用期工资：人民币4800元/月（不低于转正工资80%）」的「转正」后面只有百分数，
+ * 只认第一次出现就会整条放弃，最后退到别的条款抓到「每月200元餐补」。所以按出现顺序逐个试，
+ * 取第一个后面确实跟着金额的。
  */
 function amountAfterLabel(
   text: string,
   labelPattern: RegExp,
   maxWindow = 40,
 ): { value: number; text: string } | null {
-  const label = labelPattern.exec(text)
-  if (label === null) return null
+  const pattern = new RegExp(labelPattern.source, labelPattern.flags.replace('g', '') + 'g')
 
-  const from = label.index + label[0].length
-  const window = text.slice(from, from + maxWindow)
-  const stop = AMOUNT_STOP.exec(window)
-  const scope = stop === null ? window : window.slice(0, stop.index)
+  for (const label of text.matchAll(pattern)) {
+    const from = (label.index ?? 0) + label[0].length
+    const window = text.slice(from, from + maxWindow)
+    const stop = AMOUNT_STOP.exec(window)
+    const scope = stop === null ? window : window.slice(0, stop.index)
 
-  const amount = AMOUNT_PATTERN.exec(scope)
-  if (amount === null) return null
-  const value = toNumber(amount[1] ?? '')
-  if (value === null) return null
+    const amount = AMOUNT_PATTERN.exec(scope)
+    if (amount === null) continue
+    const value = toNumber(amount[1] ?? '')
+    if (value === null) continue
 
-  return { value, text: `${label[0]}${scope.slice(0, amount.index)}${amount[0]}` }
+    return { value, text: `${label[0]}${scope.slice(0, amount.index)}${amount[0]}` }
+  }
+  return null
 }
 
 /** 试用期工资的标签写法。 */
@@ -368,7 +415,13 @@ function extractNonCompete(clauses: ContractClause[]): Fact {
  * 数字类的组 1 是数值；文本类的标签命中后向后取一段原文（原文本身就是"核对内容"）。
  */
 type ValueSpec = { key: FactKey; pattern: RegExp; unit: string; scale?: number }
-type TextSpec = { key: FactKey; label: RegExp; maxLength?: number }
+/**
+ * 文本类事实的写法。
+ * `preferred` 是更明确的"约定式"写法，先按它找一遍，找不到再退回通用标签——
+ * 例如「工作地点：」「工作地点为」是在约定工作地点，而章节标题里的「工作内容和工作地点」
+ * 只是标题，把标题连同正文摘出来对用户没有用。
+ */
+type TextSpec = { key: FactKey; preferred?: RegExp; label: RegExp; maxLength?: number }
 
 const VALUE_SPECS: readonly ValueSpec[] = [
   { key: 'payDayOfMonth', pattern: /每月\s*([0-9]{1,2})\s*日/, unit: '日' },
@@ -406,7 +459,7 @@ const VALUE_SPECS: readonly ValueSpec[] = [
 ]
 
 const TEXT_SPECS: readonly TextSpec[] = [
-  { key: 'workLocationText', label: /工作地点/, maxLength: 30 },
+  { key: 'workLocationText', preferred: /工作地点[为是：:]/, label: /工作地点/, maxLength: 40 },
   { key: 'overtimeText', label: /加班/, maxLength: 60 },
   { key: 'breachText', label: /(?:违约金|违约责任)/, maxLength: 60 },
 ]
@@ -460,7 +513,7 @@ function extractByValueSpec(clauses: ContractClause[], spec: ValueSpec): Fact {
  * 不能从标签起往后截固定长度：条款里的句号、分号、换行都很密，截出来会跨句，
  * 报告里就会出现「加班加点。方 2.依法实行以示例为周期…」这种半截不相干的原文。
  */
-function sentenceAround(text: string, index: number, maxLength: number): string {
+export function sentenceAround(text: string, index: number, maxLength: number): string {
   const start = Math.max(
     text.lastIndexOf('。', index - 1),
     text.lastIndexOf('；', index - 1),
@@ -478,12 +531,15 @@ function sentenceAround(text: string, index: number, maxLength: number): string 
 }
 
 function extractByTextSpec(clauses: ContractClause[], spec: TextSpec): Fact {
-  for (const clause of clauses) {
-    const match = spec.label.exec(clause.text)
-    if (match === null) continue
-    const snippet = sentenceAround(clause.text, match.index, spec.maxLength ?? 40)
-    if (snippet.length < MIN_SNIPPET) continue
-    return textFact(spec.key, snippet, { clauseLabel: clause.label, text: snippet })
+  const passes = spec.preferred === undefined ? [spec.label] : [spec.preferred, spec.label]
+  for (const label of passes) {
+    for (const clause of clauses) {
+      const match = label.exec(clause.text)
+      if (match === null) continue
+      const snippet = sentenceAround(clause.text, match.index, spec.maxLength ?? 40)
+      if (snippet.length < MIN_SNIPPET) continue
+      return textFact(spec.key, snippet, { clauseLabel: clause.label, text: snippet })
+    }
   }
   return unrecognized(spec.key, `合同中未提及${FACT_META[spec.key].label}`)
 }
