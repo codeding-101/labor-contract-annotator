@@ -29,7 +29,10 @@ export function App(): React.ReactElement {
   async function handleFile(file: File): Promise<void> {
     reset(true)
     if (kindOf(file) === null) {
-      setError('暂时只支持 PDF 与 Word（.docx）。老式 .doc 与图片格式还没接。')
+      setError(
+        '暂不支持这种文件。本工具只读两种：带文字层的 PDF，和 Word（.docx）。' +
+          '老式 .doc 请在 Word 里打开后另存为 .docx；扫描件、拍照图片读不出文字，请从原件复制文字，或只把需要核对的条款手工录入。',
+      )
       return
     }
 
@@ -123,7 +126,7 @@ export function App(): React.ReactElement {
         </div>
 
         <p className="muted hint">
-          支持<b>带文字层</b>的 PDF、Word（.docx），或直接把合同文字粘贴到下面。也可以把文件<b>拖进来</b>。老式 .doc、扫描件与拍照图片暂时读不出内容——本工具会明确告诉你原因，而不是给出一份空报告。
+          支持<b>带文字层</b>的 PDF、Word（.docx），或直接把合同文字粘贴到下面。也可以把文件<b>拖进来</b>。老式 .doc 请先另存为 .docx；扫描件与拍照图片读不出文字，请复制或手工录入条款——本工具会明确说明原因，而不是给出一份空报告。
         </p>
         {dragging && <p className="drop-hint">松开鼠标即可读取这个文件</p>}
 
