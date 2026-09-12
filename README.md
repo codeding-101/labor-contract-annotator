@@ -19,7 +19,7 @@
 | 规则库 + 规则引擎 | 完成（v0）：10 条规则、36 条自带用例；法条依据由校验强制 |
 | 案例语料 | 完成（v0）：3 份案例文档共 25 个案例，为规则提供带裁判结果的真实措辞 |
 | 标注与报告 | 完成（v0）：只做标注不给评分；报告组装＋文本渲染；示例合同自检零标注 || 网页端 | 完成（v0）：纯前端应用，粘贴文本或上传 PDF 即可出报告；浏览器实测通过（桌面＋移动） |
-| 部署 | 已就绪：静态产物 + GitHub Actions 工作流，推到 `main` 即自动发布到 GitHub Pages |
+| 部署 | 已推送代码到 <https://github.com/codeding-101/annotator->；待开启 Pages |
 | 真实合同接入 | 部分完成：PDF（带文字层）与 Word（.docx）已支持；老式 .doc 与图片未接 |
 
 ---
@@ -300,20 +300,25 @@ npm run dev        # 开发模式
 
 ### 首次发布要做的三步
 
-仓库目前只有本地 git，没有远端（也没装 `gh` CLI），所以这三步需要你来：
+仓库已推到 <https://github.com/codeding-101/annotator->，还差开启 Pages：
 
 ```bash
-# 1. 在 GitHub 上新建一个空仓库（不要勾选 README / .gitignore），然后
-git remote add origin https://github.com/codeding-101/labor-contract-guard.git
-git push -u origin main
-
-# 2. 仓库 Settings → Pages，把 Source 选成 "GitHub Actions"
-
-# 3. 等 Actions 跑完，地址是
-#    https://codeding-101.github.io/labor-contract-guard/
+# 1. 仓库 Settings → Pages，把 Source 选成 "GitHub Actions"
+# 2. 回到 Actions 标签页，选 "Deploy web to GitHub Pages"，点 "Run workflow"
+#    （首次推送时 Pages 还没开启，那一次部署会失败，手动触发一次即可）
+# 3. 等它跑完，地址是
+#    https://codeding-101.github.io/annotator-/
 ```
 
-仓库名如果不是 `labor-contract-guard` 也没关系——`base: './'` 是相对的，不用改配置。
+**注意两点：**
+
+- **`git push` 必须走代理**。实测本机直连 github.com 会超时（Clash 的系统代理只对认它的程序生效，git 不认），而 GitHub 的 API 经代理又被 403 挡掉。所以推送时显式带上代理：
+
+  ```bash
+  git -c http.proxy=http://127.0.0.1:65532 -c https.proxy=http://127.0.0.1:65532 push
+  ```
+  （想省事也可以 `git config --global http.proxy …`，但那样国内仓库的访问也会绕道。）
+- **提交邮箱必须是 GitHub 的 noreply 地址**，否则会被 GH007 拒绝（"Your push would publish a private email address"）。本仓库已设为 `322343797+codeding-101@users.noreply.github.com`（只改了本仓库，没动全局配置）。
 
 ## 隐私：不是声明，是浏览器替用户兜住的
 

@@ -40,7 +40,7 @@
 
 ---
 
-## 下一步：把文件格式补全（这是最硬的一块）
+## 后续：把文件格式补全（这是最硬的一块）
 
 PDF 的文本层已经接上（`pdfjs-dist`，浏览器端，按需加载），坐标重组行的逻辑在引擎的 `src/text-lines.ts`（纯函数、有单测）。接新格式时的分工已经定好：**「文件 → 文本行」放在 `web/`，其余交给引擎**。
 
@@ -55,17 +55,21 @@ PDF 的文本层已经接上（`pdfjs-dist`，浏览器端，按需加载），�
 
 **图片这条路要单独立项想清楚**：它是真实场景里最常见的一种（学生拿到纸质合同拍照），但也是本地化架构下最难的一种。可选的折中：先做「上传图片 → 显示图片 → 用户照着录入或粘贴条款」，把工具做成录入辅助，而不是假装能自动识别。
 
-## 下一步：发布（只差你建仓推送）
+## 下一步：只剩开启 Pages
 
-部署已经全部就绪，只等远端仓库：
+代码已推到 <https://github.com/codeding-101/annotator->（远端 `main` 的哈希与本地一致）。剩下一件只能由你做的事：
 
-- `.github/workflows/deploy-web.yml`：推到 `main` 自动构建并发布；**它先跑 `npm run check`**（构建数据 + 全部断言与评测），挂了就不部署，顺带兼任质量闸门。
-- `web/vite.config.ts` 设了 `base: './'`——项目站点在 `/<仓库名>/` 下，绝对路径会全部 404。这一点在本地把 `web/dist` 挂到子路径下实测过：界面、CSS、PDF 的按需分块与 worker 都正常。
-- `web/public/.nojekyll` 让 Pages 跳过 Jekyll。
+1. 仓库 **Settings → Pages**，把 Source 选成 "GitHub Actions"
+2. 回 **Actions** 标签页，选 "Deploy web to GitHub Pages" → **Run workflow**（首次推送时 Pages 还没开，那次部署会失败，手动触发一次即可）
+3. 地址：`https://codeding-101.github.io/annotator-/`
 
-需要你做的三步（仓库目前只有本地 git，也没装 `gh` CLI，所以只能你来）：新建空仓库 → `git remote add origin …` 并 `git push -u origin main` → Settings → Pages 里把 Source 选成 "GitHub Actions"。地址将是 `https://<用户名>.github.io/<仓库名>/`。
+**推送与身份的两个坑（都已踩过，记在 README 里）**：
 
-**推送后把活链接补进 README 的顶部**——作品集项目里，一个能点开的链接比多十个功能都值钱。
+- **`git push` 必须走代理**：实测直连 github.com 超时（Clash 的系统代理 git 不认），GitHub API 经代理又被 403。推送时用
+  `git -c http.proxy=http://127.0.0.1:65532 -c https.proxy=http://127.0.0.1:65532 push`。
+- **提交邮箱必须是 GitHub noreply**，否则 GH007 拒绝推送。本仓库已设为 `322343797+codeding-101@users.noreply.github.com`（只改了本仓库，全局配置未动）；已有 18 个提交的作者/提交者邮箱已用 `filter-branch` 重写，时间与姓名保留。
+
+发布之后应当做的事：**把活链接与一张截图补进 README 顶部**——作品集项目里一个能点开的链接比多十个功能都值钱；然后考虑把本地目录名与仓库名统一（现在本地是 `D:\labor-contract-guard`，仓库是 `annotator-`）。
 
 ## 之后
 
