@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { buildTimestamp } from './build-time.ts'
 import { extractTemplate } from './extract-template.ts'
 import { htmlToBlocks } from './html.ts'
 import { FILL, markBlanks } from './mark-blanks.ts'
@@ -76,7 +77,7 @@ async function main(): Promise<number> {
       sections: result.sections,
       trailing: result.trailing,
       provenance: {
-        generatedAt: new Date().toISOString(),
+        generatedAt: buildTimestamp(),
         generator: GENERATOR,
         source: { ...declared, sha256, issues: result.issues },
         sectionCount: result.sections.length,

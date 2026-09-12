@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { buildTimestamp } from './build-time.ts'
 import { extractStatute, type ExtractedArticle } from './extract-statute.ts'
 import { htmlToBlocks } from './html.ts'
 import { normalizeForCompare } from './normalize.ts'
@@ -136,7 +137,7 @@ function main(): number {
         text: article.text,
       })),
       provenance: {
-        generatedAt: new Date().toISOString(),
+        generatedAt: buildTimestamp(),
         generator: GENERATOR,
         sources: ingested.map((source) => ({
           ...source.declared,

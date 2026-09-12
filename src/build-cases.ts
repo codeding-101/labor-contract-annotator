@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { buildTimestamp } from './build-time.ts'
 import { extractCases } from './extract-cases.ts'
 import { htmlToBlocks } from './html.ts'
 import { CaseDocSchema, CaseDocsFileSchema } from './schema.ts'
@@ -43,7 +44,7 @@ function main(): number {
       publishDate: doc.publishDate,
       cases: cases.map((item) => ({ id: `${docId}-C${item.ordinal}`, ...item })),
       provenance: {
-        generatedAt: new Date().toISOString(),
+        generatedAt: buildTimestamp(),
         generator: GENERATOR,
         source: { ...doc, sha256, issues },
       },
