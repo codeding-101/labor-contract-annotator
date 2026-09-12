@@ -272,19 +272,55 @@ function extractProbationWage(clauses: ContractClause[]): Fact {
   return unrecognized('probationMonthlyWage', '未找到可识别的试用期工资约定')
 }
 
+const YEAR_PATTERN = /([0-9]+|[一二三四五六七八九十百千两]+)\s*年/
+
+/**
+ * 从「数字 + 年」里取期限，**排除日历年份**。
+ *
+ * 实测被真实合同打穿过：「本岗位…不约定离职后竞业限制义务」那句话所在条款里有个 2026 年的日期，
+ * 旧实现把 2026 当成"2026 年的竞业限制期限"，算出 24312 个月。
+ * 四位数字落在 1900–2200 之间时一律按日期处理——期限不可能是这个数。
+ */
+function yearsFromMatch(raw: string): number | null {
+  const cleaned = raw.replace(/\s/g, '')
+  const years = /^\d+$/.test(cleaned) ? Number(cleaned) : cnToInt(cleaned)
+  if (years === null) return null
+  if (/^\d{4}$/.test(cleaned) && years >= 1900 && years <= 2200) return null
+  return years
+}
+
 function extractNonCompete(clauses: ContractClause[]): Fact {
   for (const clause of clauses) {
     if (!/竞业限制/.test(clause.text)) continue
-    const match = new RegExp(`${CN_OR_DIGIT}\\s*年`).exec(clause.text)
-    if (match === null) {
-      return unrecognized('nonCompeteMonths', '竞业限制条款里没有写明期限', {
+
+    // 明确写「不约定竞业限制」的条款，不该再去找期限
+    if (/不约定[^。；]{0,20}?竞业限制|竞业限制[^。；]{0,20}?不(?:适用|约定)/.test(clause.text)) {
+      return unrecognized('nonCompeteMonths', '合同明确不约定竞业限制义务', {
         clauseLabel: clause.label,
         text: clause.text.slice(0, 200),
       })
     }
-    const years = toNumber(match[1] ?? '')
-    if (years === null) continue
-    return fact('nonCompeteMonths', years * 12, '月', { clauseLabel: clause.label, text: match[0] }, 'EXPLICIT')
+
+    // 优先取「竞业限制期限」标签之后的期限；没有标签再退回该条第一个非日历年份
+    const label = /竞业限制[^。，；]{0,12}?期限(?:为|是)?/.exec(clause.text)
+    const scopes =
+      label === null
+        ? [clause.text]
+        : [clause.text.slice(label.index + label[0].length), clause.text]
+
+    for (const scope of scopes) {
+      for (const match of scope.matchAll(new RegExp(YEAR_PATTERN.source, 'g'))) {
+        const years = yearsFromMatch(match[1] ?? '')
+        if (years === null) continue
+        return fact(
+          'nonCompeteMonths',
+          years * 12,
+          '月',
+          { clauseLabel: clause.label, text: match[0] },
+          'EXPLICIT',
+        )
+      }
+    }
   }
   return unrecognized('nonCompeteMonths', '合同中未约定竞业限制')
 }

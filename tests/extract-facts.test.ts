@@ -80,6 +80,27 @@ test('只有试用期工资、没有转正工资时，宁可报未识别也不�
   assert.equal(facts.monthlyWage.method, 'UNRECOGNIZED')
 })
 
+test('明确写「不约定竞业限制」时不该再去抽期限（真实合同发现的缺陷）', () => {
+  const facts = extractFacts([
+    {
+      sectionTitle: null,
+      articleNo: 9,
+      label: '第九条',
+      text: '本岗位不属于企业高管、核心技术及涉密岗位，不约定离职后竞业限制义务。',
+    },
+  ])
+  assert.equal(facts.nonCompeteMonths.value, null)
+  assert.match(facts.nonCompeteMonths.reason ?? '', /不约定/)
+})
+
+test('日历年份不会被当成竞业限制期限', () => {
+  // 旧实现把日期里的 2026 当成「2026 年期限」，算出 24312 个月
+  const facts = extractFacts([
+    { sectionTitle: null, articleNo: 9, label: '第九条', text: '竞业限制期限自2026年1月1日起算，为两年。' },
+  ])
+  assert.equal(facts.nonCompeteMonths.value, 24)
+})
+
 test('未识别一律为 null 并给出原因，绝不当成 0', () => {
   const facts = extractFacts(clause('甲方按月向乙方支付劳动报酬，具体金额面议。'))
 
