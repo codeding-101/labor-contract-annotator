@@ -1,0 +1,25 @@
+{
+  "name": "labor-contract-guard-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "劳动合同风险检查工具的网页端：全部在浏览器里跑，合同内容不离开设备",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "zod": "^4.6.2"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.0"
+  }
+}

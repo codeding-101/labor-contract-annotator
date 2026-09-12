@@ -5,6 +5,9 @@ node_modules/
 dist/
 tmp/
 
+# 浏览器验证时 Playwright MCP 的输出（截图与快照）
+.playwright-mcp/
+
 # 法条与范本数据是由 sources/ 构建出来的产物，不入库。
 # 克隆后跑 npm run build:statutes 即可从冻结快照复现。
 data/
