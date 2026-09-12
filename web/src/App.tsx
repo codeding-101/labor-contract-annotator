@@ -11,6 +11,7 @@ export function App(): React.ReactElement {
   const [result, setResult] = useState<AnalysisResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [source, setSource] = useState<SourceInfo | null>(null)
+  const [dragging, setDragging] = useState(false)
 
   function reset(clearText: boolean): void {
     if (clearText) setText('')
@@ -65,6 +66,14 @@ export function App(): React.ReactElement {
     }
   }
 
+  /** 直接拖文件进来。对方发来的合同多半就是桌面或聊天窗口里的一个 .docx，拖比找按钮快。 */
+  function handleDrop(event: React.DragEvent): void {
+    event.preventDefault()
+    setDragging(false)
+    const file = event.dataTransfer.files[0]
+    if (file !== undefined) void handleFile(file)
+  }
+
   return (
     <div className="page">
       <header className="hero">
@@ -75,7 +84,15 @@ export function App(): React.ReactElement {
         <p className="privacy">全部在你的浏览器里完成，合同内容不离开设备，也不经过任何服务器。</p>
       </header>
 
-      <section className="card input-card">
+      <section
+        className={`card input-card${dragging ? ' dragging' : ''}`}
+        onDragOver={(event) => {
+          event.preventDefault()
+          setDragging(true)
+        }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={handleDrop}
+      >
         <div className="input-head">
           <h2>提供合同内容</h2>
           <div className="actions">
@@ -106,8 +123,9 @@ export function App(): React.ReactElement {
         </div>
 
         <p className="muted hint">
-          支持<b>带文字层</b>的 PDF、Word（.docx），或直接把合同文字粘贴到下面。老式 .doc、扫描件与拍照图片暂时读不出内容——本工具会明确告诉你原因，而不是给出一份空报告。
+          支持<b>带文字层</b>的 PDF、Word（.docx），或直接把合同文字粘贴到下面。也可以把文件<b>拖进来</b>。老式 .doc、扫描件与拍照图片暂时读不出内容——本工具会明确告诉你原因，而不是给出一份空报告。
         </p>
+        {dragging && <p className="drop-hint">松开鼠标即可读取这个文件</p>}
 
         <label className="sr-only" htmlFor="contract-text">
           合同内容

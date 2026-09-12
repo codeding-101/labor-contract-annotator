@@ -177,6 +177,18 @@ button.ghost:hover {
   margin: 0 0 10px;
 }
 
+.input-card.dragging {
+  outline: 2px dashed var(--blue);
+  outline-offset: -6px;
+  background: var(--blue-bg);
+}
+
+.drop-hint {
+  margin: 0 0 10px;
+  color: var(--blue);
+  font-size: 14px;
+}
+
 .error {
   margin: 12px 0 0;
   color: var(--red);
