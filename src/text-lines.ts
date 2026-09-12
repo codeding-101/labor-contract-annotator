@@ -13,6 +13,24 @@ type Fragment = { x: number; y: number; text: string }
 const Y_TOLERANCE = 2
 
 /**
+ * 判断提取出来的文字是否真的可用。
+ *
+ * PDF 有两种坏法，后者更危险：
+ * 1. 压根没有文字层（扫描件、拍照件）——字符数为 0，容易发现；
+ * 2. **有文字层，但字体没有 ToUnicode 映射**——提取出来是一堆乱码，字符数看着够、
+ *    既不像扫描件也看不出来，于是照样生成一份满是错字的报告。
+ *
+ * 判据用「中文字符占比」：中文合同里汉字应当占绝对多数，占比过低说明提取坏了。
+ * 这种文件本地无从还原，正确做法是明确报「读不出来」，而不是给一份错报告。
+ */
+export function looksLikeUsableChineseText(text: string, minRatio = 0.4, minLength = 50): boolean {
+  const compact = text.replace(/\s/g, '')
+  if (compact.length < minLength) return false
+  const cjk = [...compact].filter((ch) => /[\u4e00-\u9fff]/.test(ch)).length
+  return cjk / compact.length >= minRatio
+}
+
+/**
  * 两段文字拼接时是否要插空格。
  *
  * 只在两侧都是 ASCII 字母数字时才插：中文合同里绝大多数空隙是排版产物，
