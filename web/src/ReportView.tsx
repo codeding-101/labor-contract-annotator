@@ -9,12 +9,6 @@ const DIFF_LABEL: Record<string, string> = {
   BLANK_LEFT: '填空处留白',
 }
 
-function scoreTone(score: number): string {
-  if (score >= 85) return 'good'
-  if (score >= 60) return 'warn'
-  return 'bad'
-}
-
 function describeKeyInfo(status: string, value: string | null): string {
   if (status === 'VALUE') return value ?? '—'
   if (status === 'MENTIONED') return '有提及（未核对内容）'
@@ -24,46 +18,28 @@ function describeKeyInfo(status: string, value: string | null): string {
 
 export function ReportView({ report }: { report: ContractReport }): React.ReactElement {
   const diffTotal = Object.values(report.diffs.counts).reduce((sum, value) => sum + value, 0)
+  const annotated = report.counts.red + report.counts.yellow + report.counts.blue
 
   return (
     <div className="report">
-      <section className="card score-card">
-        <div className={`score ${scoreTone(report.score.score)}`}>
-          <span className="score-number">{report.score.score}</span>
-          <span className="score-total">/ 100</span>
+      <section className="card overview">
+        <p className="overview-line">
+          共标注 <strong>{annotated}</strong> 处
+        </p>
+        <div className="counts">
+          <span className="chip red">严重 {report.counts.red}</span>
+          <span className="chip yellow">需关注 {report.counts.yellow}</span>
+          <span className="chip blue">提示 {report.counts.blue}</span>
+          <span className="chip muted">无法判定 {report.undetermined.length}</span>
         </div>
-        <div className="score-side">
-          <p className="recommendation">{report.recommendation}</p>
-          <div className="counts">
-            <span className="chip red">严重 {report.counts.red}</span>
-            <span className="chip yellow">需关注 {report.counts.yellow}</span>
-            <span className="chip blue">提示 {report.counts.blue}</span>
-            <span className="chip muted">无法判定 {report.score.undeterminedCount}</span>
-          </div>
-        </div>
+        <p className="muted">
+          本工具只把合同里的条款标出来、附上对应的法律条文，<strong>不做综合评价，也不替你决定签不签</strong>。
+        </p>
       </section>
-
-      {report.score.capped && <p className="notice">⚠ {report.score.capReason}</p>}
-
-      {report.score.deductions.length > 0 && (
-        <details className="card details">
-          <summary>评分明细（{report.score.deductions.length} 项扣分）</summary>
-          <ul className="plain">
-            {report.score.deductions.map((item) => (
-              <li key={item.ruleCode}>
-                − {item.deduction} · {item.title}
-              </li>
-            ))}
-          </ul>
-          <p className="muted">
-            分数 = 100 − 各项扣分之和（下限 0）。评分只反映本工具检查项的命中情况，不代表对这份合同的法律评价。
-          </p>
-        </details>
-      )}
 
       {report.risks.length > 0 && (
         <section>
-          <h2>风险事项</h2>
+          <h2>标注的条款</h2>
           {report.risks.map((risk) => (
             <article key={risk.ruleCode} className={`card risk ${risk.level}`}>
               <header>
@@ -106,7 +82,7 @@ export function ReportView({ report }: { report: ContractReport }): React.ReactE
         <section>
           <h2>无法判定的事项</h2>
           <p className="muted">
-            这些项因为合同里缺少可识别信息而无法判断——<strong>不等于没问题</strong>，也不计入评分。
+            这些项因为合同里缺少可识别信息而无法判断——<strong>不等于没问题</strong>，也不计入上面的标注数。
           </p>
           <ul className="card list">
             {report.undetermined.map((item) => (

@@ -28,25 +28,18 @@ export function renderReport(report: ContractReport): string {
   const out: string[] = []
   const push = (line = ''): void => void out.push(line)
 
-  push(`劳动合同风险报告`)
+  push(`劳动合同条款标注`)
   push(`对照范本：${report.template.name}（${report.template.regionName}）`)
   push('='.repeat(64))
-  push(`综合评分：${report.score.score} / 100（满分 ${report.score.base}）`)
   push(
-    `严重 ${report.counts.red} 条　需关注 ${report.counts.yellow} 条　提示 ${report.counts.blue} 条　无法判定 ${report.score.undeterminedCount} 项`,
+    `共标注 ${report.counts.red + report.counts.yellow + report.counts.blue} 处：严重 ${report.counts.red}　需关注 ${report.counts.yellow}　提示 ${report.counts.blue}　无法判定 ${report.undetermined.length}`,
   )
-  push(`签署建议：${report.recommendation}`)
+  push('本工具只把合同里的条款标出来并附上法律条文，不做综合评价，也不替你决定签不签。')
   push()
-
-  if (report.score.capped) push(`⚠ ${report.score.capReason}`)
-  if (report.score.deductions.length > 0) {
-    push(`评分明细：100 ${report.score.deductions.map((item) => `− ${item.deduction}（${item.title}）`).join(' ')} = ${report.score.score}`)
-    push()
-  }
 
   if (report.risks.length > 0) {
     push('─'.repeat(64))
-    push('风险事项')
+    push('标注的条款')
     push()
     for (const risk of report.risks) {
       push(`${LEVEL_LABELS[risk.level]}　${risk.title}`)

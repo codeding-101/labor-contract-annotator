@@ -173,13 +173,12 @@ function main(): number {
     })
     const valued = sampleReport.keyInfo.filter((row) => row.status === 'VALUE').length
     const unrecognized = sampleReport.keyInfo.filter((row) => row.status === 'UNRECOGNIZED').length
+    const annotated = sampleReport.counts.red + sampleReport.counts.yellow + sampleReport.counts.blue
     console.log(
-      `  报告层：评分 ${sampleReport.score.score}  风险 ${sampleReport.risks.length}  无法判定 ${sampleReport.undetermined.length}  关键信息取值 ${valued} 项、未识别 ${unrecognized} 项`,
+      `  报告层：标注 ${annotated} 处  无法判定 ${sampleReport.undetermined.length}  关键信息取值 ${valued} 项、未识别 ${unrecognized} 项`,
     )
-    if (sampleReport.score.score !== 100 || sampleReport.risks.length > 0) {
-      problems.push(
-        `${file}: 合规范本的报告应为满分且零风险，实际 ${sampleReport.score.score} 分 / ${sampleReport.risks.length} 条风险`,
-      )
+    if (annotated > 0) {
+      problems.push(`${file}: 官方范本派生的合同不应有任何标注（应为 0，疑似误报），实际 ${annotated} 处`)
     }
 
     for (const evalCase of buildCases(templateClauses)) {

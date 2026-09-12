@@ -82,12 +82,11 @@ function main(): number {
   console.log(renderReport(risky))
 
   const problems: string[] = []
-  if (clean.score.score !== 100) problems.push(`官方范本派生的示例合同应得 100 分，实际 ${clean.score.score}`)
-  if (clean.risks.length !== 0) problems.push(`示例合同不应报出风险项，实际 ${clean.risks.length} 条`)
+  const cleanCounts = clean.counts.red + clean.counts.yellow + clean.counts.blue
+  if (cleanCounts !== 0) problems.push(`官方范本派生的示例合同不应有任何标注，实际 ${cleanCounts} 处`)
   if (risky.risks.length !== INJECTED.length) {
-    problems.push(`注入的 ${INJECTED.length} 条问题条款应全部报出，实际 ${risky.risks.length} 条`)
+    problems.push(`注入的 ${INJECTED.length} 条问题条款应全部标出，实际 ${risky.risks.length} 条`)
   }
-  if (risky.score.score >= clean.score.score) problems.push('注入问题条款后分数没有下降')
 
   if (problems.length > 0) {
     console.log('\n=== 问题 ===')

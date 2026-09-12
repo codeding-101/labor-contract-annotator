@@ -2,7 +2,6 @@ import type { ContractClause, DiffKind, DiffResult } from './diff-template.ts'
 import { FACT_META, type FactKey, type FactSet } from './extract-facts.ts'
 import type { RiskEvidence, RuleEngineResult, StatuteRef, UndeterminedItem } from './rule-engine.ts'
 import type { ContractTemplate, RiskLevel } from './schema.ts'
-import { scoreFindings, type RiskScore } from './score.ts'
 
 export type ReportRisk = {
   ruleCode: string
@@ -44,14 +43,12 @@ export type ReportSummary = { title: string; lines: string[] }
 
 export type ContractReport = {
   template: { id: string; name: string; regionName: string; regionCode: string }
-  score: RiskScore
   counts: { red: number; yellow: number; blue: number }
   risks: ReportRisk[]
   undetermined: UndeterminedItem[]
   diffs: { counts: Record<DiffKind, number>; items: ReportDiffItem[] }
   keyInfo: KeyInfoRow[]
   summaries: ReportSummary[]
-  recommendation: string
   disclaimers: string[]
   versions: { ruleSetVersion: string; templateVersion: string; generatedAt: string }
 }
@@ -92,7 +89,7 @@ const KEY_INFO_ITEMS: readonly { label: string; source: KeyInfoSource }[] = [
 
 const DISCLAIMERS: readonly string[] = [
   '本报告由工具自动生成，仅供参考，不构成法律意见，也不能替代执业律师。',
-  '评分只反映本工具检查项的命中情况，不代表对这份合同的法律评价，也不代表合同没有其他风险。',
+  '本工具只做事实比对与条文引用：把条款标出来并附上法律依据，不做综合评价，也不替你决定签还是不签。',
   '不同地区的规定存在差异，最终请以当地劳动保障部门、工会或执业律师的意见为准。',
   '合同中出现但本工具未覆盖的事项，不在本报告的检查范围内。',
 ]
@@ -161,23 +158,6 @@ function buildSummary(
   return { title, lines }
 }
 
-function buildRecommendation(counts: { red: number; yellow: number; blue: number }, undeterminedCount: number): string {
-  const parts: string[] = []
-  if (counts.red > 0) {
-    parts.push(
-      `发现 ${counts.red} 条严重风险，建议先就这些事项与用人单位沟通确认后再签署；如对方拒绝调整，建议先向当地劳动保障部门或执业律师咨询。`,
-    )
-  } else if (counts.yellow > 0) {
-    parts.push(`未发现明确违反法律规定的条款，但有 ${counts.yellow} 处需要重点确认，建议签署前逐一问清楚。`)
-  } else {
-    parts.push('在本工具覆盖的检查项下未发现明显问题。这不代表合同没有其他风险——本工具只检查已覆盖的规则与范本差异。')
-  }
-  if (undeterminedCount > 0) {
-    parts.push(`另有 ${undeterminedCount} 项因合同缺少可识别信息而无法判断，建议人工核对后再决定。`)
-  }
-  return parts.join('')
-}
-
 export type ReportInput = {
   template: ContractTemplate
   contractClauses: ContractClause[]
@@ -190,7 +170,6 @@ export type ReportInput = {
 /** 把比对结果、风险项、无法判定项、事实组装成一份可展示的报告。 */
 export function buildReport(input: ReportInput): ContractReport {
   const { template, contractClauses, diff, facts, ruleResult } = input
-
   const risks: ReportRisk[] = [...ruleResult.findings].sort(
     (a, b) => LEVEL_ORDER[a.level] - LEVEL_ORDER[b.level] || a.ruleCode.localeCompare(b.ruleCode),
   )
@@ -211,7 +190,6 @@ export function buildReport(input: ReportInput): ContractReport {
       regionName: template.regionName,
       regionCode: template.regionCode,
     },
-    score: scoreFindings(ruleResult.findings, undetermined),
     counts,
     risks,
     undetermined,
@@ -238,7 +216,6 @@ export function buildReport(input: ReportInput): ContractReport {
       buildSummary('工时信息', ['工作时间', '加班规则', '休假制度'], ['工时与加班'], keyInfo, risks),
       buildSummary('社保福利', ['五险一金'], ['社会保险'], keyInfo, risks),
     ],
-    recommendation: buildRecommendation(counts, undetermined.length),
     disclaimers: [...DISCLAIMERS],
     versions: {
       ruleSetVersion: input.ruleSetVersion,
