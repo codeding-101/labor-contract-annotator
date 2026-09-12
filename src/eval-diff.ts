@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { diffAgainstTemplate, flattenTemplate, type ContractClause, type DiffKind, type TemplateClause } from './diff-template.ts'
 import { extractFacts, FACT_META, type FactKey } from './extract-facts.ts'
 import { fillBlanks } from './fill-template.ts'
-import { buildReport } from './build-report.ts'
+import { buildReport, type ContractReport } from './build-report.ts'
 import { evaluateRules } from './rule-engine.ts'
 import { loadStatutes } from './load-statutes.ts'
 import { ContractTemplateSchema, RiskRuleSetSchema } from './schema.ts'
@@ -12,6 +12,25 @@ const ROOT = join(import.meta.dirname, '..')
 const DATA_DIR = join(ROOT, 'data', 'templates')
 
 const ALL_KINDS: DiffKind[] = ['MISSING_IN_CONTRACT', 'EXTRA_IN_CONTRACT', 'MODIFIED', 'BLANK_LEFT']
+
+function annotated(report: ContractReport): number {
+  return report.counts.red + report.counts.yellow + report.counts.blue
+}
+
+/**
+ * 范本里写明了数额或期限、因此**必须**取出值的关键信息项。
+ * 不在这里的项落到「仅提及」是正常的，报告会把原文摘出来让人自行核对：
+ * 例如范本只说「依法享有…带薪年休假…等假期」而没给天数，工资构成里的基本工资/绩效工资
+ * 只出现在没被选中的发放方式里——这些都不该当成值报出来。
+ */
+const MUST_HAVE_VALUE: readonly string[] = [
+  '合同期限',
+  '试用期',
+  '约定月工资',
+  '试用期工资',
+  '发薪日期',
+  '每日工作时间',
+]
 
 function contractFrom(templateClauses: TemplateClause[], fill: boolean): ContractClause[] {
   return templateClauses.map((clause) => ({
@@ -162,23 +181,32 @@ function main(): number {
       }
     }
 
-    // 报告层闸门：合规范本派生的合同应当满分、零风险，且关键信息里的事实项都能取到值。
+    // 报告层闸门：合规范本派生的合同不应有任何标注，且关键信息要真的取出值来。
     const sampleReport = buildReport({
       template,
       contractClauses: sampleContract,
-      diff: diffAgainstTemplate(templateClauses, sampleContract),
       facts: sampleFacts,
       ruleResult,
       ruleSetVersion: ruleSet.ruleSetVersion,
     })
-    const valued = sampleReport.keyInfo.filter((row) => row.status === 'VALUE').length
-    const unrecognized = sampleReport.keyInfo.filter((row) => row.status === 'UNRECOGNIZED').length
-    const annotated = sampleReport.counts.red + sampleReport.counts.yellow + sampleReport.counts.blue
+    const valued = sampleReport.keyInfo.filter((row) => row.status === 'VALUE' || row.status === 'TEXT').length
+    const mentioned = sampleReport.keyInfo.filter((row) => row.status === 'MENTIONED')
+    const missing = sampleReport.keyInfo.filter((row) => row.status === 'NOT_FOUND').length
     console.log(
-      `  报告层：标注 ${annotated} 处  无法判定 ${sampleReport.undetermined.length}  关键信息取值 ${valued} 项、未识别 ${unrecognized} 项`,
+      `  报告层：标注 ${annotated(sampleReport)} 处  无法判定 ${sampleReport.undetermined.length}  关键信息取值 ${valued} 项、仅提及 ${mentioned.length} 项、未提及 ${missing} 项`,
     )
-    if (annotated > 0) {
-      problems.push(`${file}: 官方范本派生的合同不应有任何标注（应为 0，疑似误报），实际 ${annotated} 处`)
+    if (annotated(sampleReport) > 0) {
+      problems.push(`${file}: 官方范本派生的合同不应有任何标注（应为 0，疑似误报），实际 ${annotated(sampleReport)} 处`)
+    }
+    // 范本里写明了数额/期限、却被判成"仅提及"的项，说明抽取规则在真实范本文本上失效了。
+    const required = sampleReport.keyInfo.filter((row) => MUST_HAVE_VALUE.includes(row.label) && row.status !== 'VALUE')
+    if (required.length > 0) {
+      problems.push(
+        `${file}: 范本里写明了这些项，却没能取出值：${required.map((row) => `${row.label}（${row.status}）`).join('、')}`,
+      )
+    }
+    for (const row of mentioned) {
+      console.log(`      仅提及：${row.label}——${(row.evidence ?? '').slice(0, 50)}`)
     }
 
     for (const evalCase of buildCases(templateClauses)) {

@@ -96,6 +96,18 @@ export const FACT_KEYS = [
   'monthlyWage',
   'probationMonthlyWage',
   'nonCompeteMonths',
+  // 以下为「关键信息」表里原先只做关键词判断、现已升级为真值抽取的项
+  'payDayOfMonth',
+  'baseWage',
+  'performanceWage',
+  'bonusWage',
+  'dailyWorkHours',
+  'annualLeaveDays',
+  'confidentialityMonths',
+  'workLocationText',
+  'socialInsuranceFundText',
+  'overtimeText',
+  'breachText',
 ] as const
 
 export const FactKeySchema = z.enum(FACT_KEYS)

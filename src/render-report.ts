@@ -4,17 +4,20 @@ import type { RiskLevel } from './schema.ts'
 const LEVEL_LABELS: Readonly<Record<RiskLevel, string>> = { red: '🔴 严重', yellow: '🟡 需关注', blue: '🔵 提示' }
 
 function describeRow(row: KeyInfoRow): string {
-  if (row.status === 'VALUE') return row.value ?? '—'
-  if (row.status === 'MENTIONED') return '有提及（未核对内容）'
-  if (row.status === 'NOT_FOUND') return '合同未提及'
-  return '未能识别（需人工核对）'
+  if (row.status === 'VALUE' || row.status === 'TEXT') return row.value ?? '—'
+  if (row.status === 'MENTIONED') {
+    return row.evidence === null
+      ? '有相关约定，但本工具没能识别出具体内容'
+      : `有相关约定，但本工具没能识别出具体内容，请自行核对；原文：${row.evidence}`
+  }
+  return '合同未提及'
 }
 
 /**
  * 把报告渲染成纯文本。
  *
  * 这份渲染同时是"界面看到的内容"的预览：网页端会复用同一份 `ContractReport` 数据，
- * 只是换成卡片与颜色。所以这里也刻意按界面层级排：结论 → 风险 → 无法判定 → 差异 → 关键信息 → 明细。
+ * 只是换成卡片与颜色。所以这里也刻意按界面层级排：结论 → 风险 → 无法判定 → 关键信息 → 明细。
  */
 export function renderReport(report: ContractReport): string {
   const out: string[] = []

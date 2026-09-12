@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { buildReport, type ContractReport } from './build-report.ts'
-import { diffAgainstTemplate, flattenTemplate, type ContractClause } from './diff-template.ts'
+import { flattenTemplate, type ContractClause } from './diff-template.ts'
 import { extractFacts } from './extract-facts.ts'
 import { fillBlanks } from './fill-template.ts'
 import { loadStatutes } from './load-statutes.ts'
@@ -29,7 +29,7 @@ function filledContract(): { clauses: ContractClause[]; templateClauses: ReturnT
   }
 }
 
-function reportFor(clauses: ContractClause[], templateClauses: ReturnType<typeof flattenTemplate>): ContractReport {
+function reportFor(clauses: ContractClause[]): ContractReport {
   const template = ContractTemplateSchema.parse(
     JSON.parse(readFileSync(join(ROOT, 'data', 'templates', `${TEMPLATE_ID}.json`), 'utf8')),
   )
@@ -37,12 +37,10 @@ function reportFor(clauses: ContractClause[], templateClauses: ReturnType<typeof
     JSON.parse(readFileSync(join(ROOT, 'rules', 'labor-contract-law.json'), 'utf8')),
   )
   const facts = extractFacts(clauses)
-  const diff = diffAgainstTemplate(templateClauses, clauses)
   const ruleResult = evaluateRules(ruleSet.rules, clauses, loadStatutes().lookup, facts)
   return buildReport({
     template,
     contractClauses: clauses,
-    diff,
     facts,
     ruleResult,
     ruleSetVersion: ruleSet.ruleSetVersion,
@@ -72,13 +70,13 @@ const INJECTED: ContractClause[] = [
 ]
 
 function main(): number {
-  const { clauses, templateClauses } = filledContract()
+  const { clauses } = filledContract()
 
-  const clean = reportFor(clauses, templateClauses)
+  const clean = reportFor(clauses)
   console.log(renderReport(clean))
 
   console.log('\n\n')
-  const risky = reportFor([...clauses, ...INJECTED], templateClauses)
+  const risky = reportFor([...clauses, ...INJECTED])
   console.log(renderReport(risky))
 
   const problems: string[] = []
@@ -86,6 +84,16 @@ function main(): number {
   if (cleanCounts !== 0) problems.push(`官方范本派生的示例合同不应有任何标注，实际 ${cleanCounts} 处`)
   if (risky.risks.length !== INJECTED.length) {
     problems.push(`注入的 ${INJECTED.length} 条问题条款应全部标出，实际 ${risky.risks.length} 条`)
+  }
+
+  // 填好的范本里哪些关键信息没能取到值，一眼可见。
+  // 范本本来就没写数额的项（例如「依法享受年休假」而不给天数）落到 MENTIONED 是正常的，
+  // 所以这里只打印、不判失败；真正要求"必须取出值"的那几项在 `npm run eval:diff` 里把关。
+  const unvalued = clean.keyInfo.filter((row) => row.status !== 'VALUE' && row.status !== 'TEXT')
+  if (unvalued.length > 0) {
+    console.log(
+      `\n关键信息未取到值 ${unvalued.length} 项：${unvalued.map((row) => `${row.label}（${row.status}）`).join('、')}`,
+    )
   }
 
   if (problems.length > 0) {

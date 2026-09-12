@@ -70,7 +70,7 @@ export function App(): React.ReactElement {
       <header className="hero">
         <h1>劳动合同风险检查</h1>
         <p className="lead">
-          把劳动合同与当地人社部门的官方示范文本逐条比对，标出差异、指出可能违反法律规定的条款，并附上对应的法条原文。
+          把劳动合同与当地人社部门的官方示范文本逐条比对，指出可能违反法律规定的条款，并附上对应的法条原文。
         </p>
         <p className="privacy">全部在你的浏览器里完成，合同内容不离开设备，也不经过任何服务器。</p>
       </header>

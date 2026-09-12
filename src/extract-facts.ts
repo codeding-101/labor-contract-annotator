@@ -9,6 +9,17 @@ export const FACT_META: Record<FactKey, { label: string; unit: string }> = {
   monthlyWage: { label: '月工资', unit: '元' },
   probationMonthlyWage: { label: '试用期月工资', unit: '元' },
   nonCompeteMonths: { label: '竞业限制期限', unit: '个月' },
+  payDayOfMonth: { label: '发薪日期', unit: '日' },
+  baseWage: { label: '基本工资', unit: '元' },
+  performanceWage: { label: '绩效工资', unit: '元' },
+  bonusWage: { label: '奖金', unit: '元' },
+  dailyWorkHours: { label: '每日工作时间', unit: '小时' },
+  annualLeaveDays: { label: '年休假', unit: '天' },
+  confidentialityMonths: { label: '保密期限', unit: '个月' },
+  workLocationText: { label: '工作地点', unit: '' },
+  socialInsuranceFundText: { label: '五险一金', unit: '' },
+  overtimeText: { label: '加班规则', unit: '' },
+  breachText: { label: '违约责任', unit: '' },
 }
 
 export type { FactKey }
@@ -27,6 +38,12 @@ export type Fact = {
    * **未识别时一律为 null**——不要当成 0，也不要当成合规：依赖它的规则必须降级为「无法判定」。
    */
   value: number | null
+  /**
+   * 文本类事实的取值：直接给合同原文片段。
+   * 「工作地点是什么」这类项没有可比较的数值，把原文摘出来本身就是"核对内容"——
+   * 比「有提及（未核对内容）」这种含糊说法有用得多。
+   */
+  textValue: string | null
   unit: string | null
   evidence: FactEvidence | null
   method: 'EXPLICIT' | 'DATE_RANGE' | 'DERIVED' | 'UNRECOGNIZED'
@@ -93,11 +110,16 @@ function findDateRange(text: string): DateRange | 'AMBIGUOUS' | null {
 }
 
 function fact(key: FactKey, value: number, unit: string, evidence: FactEvidence, method: Fact['method']): Fact {
-  return { key, value, unit, evidence, method }
+  return { key, value, textValue: null, unit, evidence, method }
 }
 
 function unrecognized(key: FactKey, reason: string, evidence: FactEvidence | null = null): Fact {
-  return { key, value: null, unit: null, evidence, method: 'UNRECOGNIZED', reason }
+  return { key, value: null, textValue: null, unit: null, evidence, method: 'UNRECOGNIZED', reason }
+}
+
+/** 文本类事实：值就是合同原文片段。 */
+function textFact(key: FactKey, textValue: string, evidence: FactEvidence): Fact {
+  return { key, value: null, textValue, unit: null, evidence, method: 'EXPLICIT' }
 }
 
 function extractContractTerm(clauses: ContractClause[]): Fact {
@@ -242,16 +264,22 @@ function extractMonthlyWage(clauses: ContractClause[]): Fact {
   for (const clause of clauses) {
     if (!/(月工资|工资|薪资|薪酬)/.test(clause.text)) continue
 
-    const labelled = amountAfterLabel(clause.text, REGULAR_WAGE_LABEL)
-    if (labelled !== null) {
-      return fact('monthlyWage', labelled.value, '元', { clauseLabel: clause.label, text: labelled.text }, 'EXPLICIT')
+    // 先看被选中的发放方式与前缀；没被选中的那一项里写着「月工资 X 元」不算数
+    const scopeList = applicableScopes(clause.text)
+    for (const scope of scopeList) {
+      const labelled = amountAfterLabel(scope, REGULAR_WAGE_LABEL)
+      if (labelled !== null) {
+        return fact('monthlyWage', labelled.value, '元', { clauseLabel: clause.label, text: labelled.text }, 'EXPLICIT')
+      }
     }
 
-    // 没有「转正/月工资」这类标签时，若这一条只讲了试用期工资，就不能拿它的金额当约定工资——
-    // 那会低估 80% 的比对基准。宁可报未识别。
-    if (/试用期/.test(clause.text)) continue
+    // 没有「转正/月工资」这类标签时，只有在这一条明显只讲一个固定月薪时才兜底。
+    // 讲工资构成（基本工资/绩效工资）或计件的条款里没有"约定月工资"这个单一数字，
+    // 逮住第一个金额会把它错当成月薪——那正是 80% 那条规则的比对基准。
+    // 只讲试用期工资的条款同理，宁可报未识别。
+    if (/试用期|基本工资|绩效工资|计件/.test(clause.text)) continue
 
-    const first = AMOUNT_PATTERN.exec(clause.text)
+    const first = AMOUNT_PATTERN.exec(scopeList[0] ?? clause.text)
     if (first === null) continue
     const value = toNumber(first[1] ?? '')
     if (value === null) continue
@@ -265,9 +293,11 @@ function extractProbationWage(clauses: ContractClause[]): Fact {
     if (!/试用期/.test(clause.text)) continue
     if (!/工资/.test(clause.text)) continue
 
-    const hit = amountAfterLabel(clause.text, PROBATION_WAGE_LABEL)
-    if (hit === null) continue
-    return fact('probationMonthlyWage', hit.value, '元', { clauseLabel: clause.label, text: hit.text }, 'EXPLICIT')
+    for (const scope of applicableScopes(clause.text)) {
+      const hit = amountAfterLabel(scope, PROBATION_WAGE_LABEL)
+      if (hit === null) continue
+      return fact('probationMonthlyWage', hit.value, '元', { clauseLabel: clause.label, text: hit.text }, 'EXPLICIT')
+    }
   }
   return unrecognized('probationMonthlyWage', '未找到可识别的试用期工资约定')
 }
@@ -331,12 +361,183 @@ function extractNonCompete(clauses: ContractClause[]): Fact {
  * 抽取是纯确定性的（正则 + 中文数字换算 + 多选项消歧），不调用模型：
  * 数值类规则要拿这些值去和法条比对，值错了结论就错了，所以宁可返回「未识别」也不猜。
  */
+/**
+ * 「关键信息」表里原先只做关键词判断的项，升级为真值抽取。
+ *
+ * 每一项都必须**自带标签**（「每月」「基本工资」这种），不按形状猜——这条是实测三次打穿换来的。
+ * 数字类的组 1 是数值；文本类的标签命中后向后取一段原文（原文本身就是"核对内容"）。
+ */
+type ValueSpec = { key: FactKey; pattern: RegExp; unit: string; scale?: number }
+type TextSpec = { key: FactKey; label: RegExp; maxLength?: number }
+
+const VALUE_SPECS: readonly ValueSpec[] = [
+  { key: 'payDayOfMonth', pattern: /每月\s*([0-9]{1,2})\s*日/, unit: '日' },
+  {
+    key: 'baseWage',
+    pattern: /基本工资[^0-9一二三四五六七八九十]{0,12}?([0-9][0-9,，]*|[一二三四五六七八九十]+)\s*元/,
+    unit: '元',
+  },
+  {
+    key: 'performanceWage',
+    pattern: /绩效(?:工资|奖金)[^0-9一二三四五六七八九十]{0,12}?([0-9][0-9,，]*|[一二三四五六七八九十]+)\s*元/,
+    unit: '元',
+  },
+  {
+    key: 'bonusWage',
+    pattern: /奖金[^0-9一二三四五六七八九十]{0,12}?([0-9][0-9,，]*|[一二三四五六七八九十]+)\s*元/,
+    unit: '元',
+  },
+  {
+    key: 'dailyWorkHours',
+    pattern: /(?:每日|每天)[^0-9一二三四五六七八九十]{0,10}?([0-9]+(?:\.[0-9]+)?|[一二三四五六七八九十]+)\s*(?:个)?小时/,
+    unit: '小时',
+  },
+  {
+    key: 'annualLeaveDays',
+    pattern: /年休假[^0-9一二三四五六七八九十]{0,12}?([0-9]+|[一二三四五六七八九十]+)\s*天/,
+    unit: '天',
+  },
+  {
+    key: 'confidentialityMonths',
+    pattern: /保密(?:期限|期)[^0-9一二三四五六七八九十]{0,12}?([0-9]+|[一二三四五六七八九十两]+)\s*年/,
+    unit: '个月',
+    scale: 12,
+  },
+]
+
+const TEXT_SPECS: readonly TextSpec[] = [
+  { key: 'workLocationText', label: /工作地点/, maxLength: 30 },
+  { key: 'overtimeText', label: /加班/, maxLength: 60 },
+  { key: 'breachText', label: /(?:违约金|违约责任)/, maxLength: 60 },
+]
+
+/** 摘出来的原文片段太短就没有核对价值，继续往后找下一条。 */
+const MIN_SNIPPET = 6
+
+/** 合理性检查：荒谬值一律拒绝。宁可报未识别，也不给看起来合理实际错的值。 */
+function isPlausible(key: FactKey, value: number): boolean {
+  if (key === 'payDayOfMonth') return value >= 1 && value <= 31
+  if (key === 'dailyWorkHours') return value >= 1 && value <= 24
+  if (key === 'annualLeaveDays') return value >= 1 && value <= 60
+  if (key === 'confidentialityMonths') return value >= 1 && value <= 600
+  return value >= 1 && value <= 10_000_000
+}
+
+/**
+ * 带「第 N 种」的条款 = 选项清单 + 清单前后的共用文字：只有被选中的那一项算数，
+ * 清单之前的文字（例如「于每月 X 日前足额支付」）对所有选项都适用。
+ * 所以候选范围是被选中的项 + 清单之前的文字，**绝不包含没被选中的项**——
+ * 那正是"把没选的发放方式里的数额报成约定工资"的来源。
+ * 条款没有选项标记时，候选范围就是整条原文。
+ */
+function applicableScopes(text: string): string[] {
+  const marker = new RegExp(`第\\s*${CN_OR_DIGIT}\\s*种`).exec(text)
+  if (marker === null) return [text]
+  const chosen = pickOption(text)
+  if (chosen === text) return [text]
+  const itemStart = /\d+[.．]/.exec(text)?.index ?? marker.index
+  return [chosen, text.slice(0, itemStart)]
+}
+
+function extractByValueSpec(clauses: ContractClause[], spec: ValueSpec): Fact {
+  for (const clause of clauses) {
+    for (const candidate of applicableScopes(clause.text)) {
+      const match = spec.pattern.exec(candidate)
+      if (match === null) continue
+      const parsed = toNumber(match[1] ?? '')
+      if (parsed === null) continue
+      const value = parsed * (spec.scale ?? 1)
+      if (!isPlausible(spec.key, value)) continue
+      return fact(spec.key, value, spec.unit, { clauseLabel: clause.label, text: match[0] }, 'EXPLICIT')
+    }
+  }
+  return unrecognized(spec.key, `未找到可识别的${FACT_META[spec.key].label}`)
+}
+
+/**
+ * 取标签所在的那一句。
+ *
+ * 不能从标签起往后截固定长度：条款里的句号、分号、换行都很密，截出来会跨句，
+ * 报告里就会出现「加班加点。方 2.依法实行以示例为周期…」这种半截不相干的原文。
+ */
+function sentenceAround(text: string, index: number, maxLength: number): string {
+  const start = Math.max(
+    text.lastIndexOf('。', index - 1),
+    text.lastIndexOf('；', index - 1),
+    text.lastIndexOf('\n', index - 1),
+  )
+  const ends = ['。', '；', '\n']
+    .map((mark) => text.indexOf(mark, index))
+    .filter((found) => found !== -1)
+  const end = ends.length === 0 ? text.length : Math.min(...ends)
+  return text
+    .slice(start + 1, end)
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxLength)
+}
+
+function extractByTextSpec(clauses: ContractClause[], spec: TextSpec): Fact {
+  for (const clause of clauses) {
+    const match = spec.label.exec(clause.text)
+    if (match === null) continue
+    const snippet = sentenceAround(clause.text, match.index, spec.maxLength ?? 40)
+    if (snippet.length < MIN_SNIPPET) continue
+    return textFact(spec.key, snippet, { clauseLabel: clause.label, text: snippet })
+  }
+  return unrecognized(spec.key, `合同中未提及${FACT_META[spec.key].label}`)
+}
+
+/** 五险一金单独处理：这一项真正要核对的是「含不含住房公积金」。 */
+function extractSocialInsuranceFund(clauses: ContractClause[]): Fact {
+  const social = clauses.find((clause) => /(社会保险|社保)/.test(clause.text))
+  const fund = clauses.find((clause) => /住房公积金|公积金/.test(clause.text))
+  const source = fund ?? social
+  if (source === undefined) {
+    return unrecognized('socialInsuranceFundText', '合同中未提及社会保险与住房公积金')
+  }
+  return textFact(
+    'socialInsuranceFundText',
+    fund === undefined ? '只提到社会保险，未提住房公积金' : '含住房公积金',
+    { clauseLabel: source.label, text: source.text.slice(0, 60) },
+  )
+}
+
+/** 把同一套逻辑读到的事实按 key 取出来，缺规则时直接抛错而不是静默为空。 */
+function makePicker(clauses: ContractClause[]): (key: FactKey) => Fact {
+  const byPattern = new Map(VALUE_SPECS.map((spec) => [spec.key, extractByValueSpec(clauses, spec)]))
+  const byText = new Map(TEXT_SPECS.map((spec) => [spec.key, extractByTextSpec(clauses, spec)]))
+  return (key) => {
+    const found = byPattern.get(key) ?? byText.get(key)
+    if (found === undefined) throw new Error(`事实 ${key} 没有对应的抽取规则`)
+    return found
+  }
+}
+
+/**
+ * 从合同条款里抽取结构化事实。
+ *
+ * 抽取是纯确定性的（正则 + 中文数字换算 + 多选项消歧），不调用模型：
+ * 数值类规则要拿这些值去和法条比对，值错了结论就错了，所以宁可返回「未识别」也不猜。
+ */
 export function extractFacts(clauses: ContractClause[]): FactSet {
+  const pick = makePicker(clauses)
   return {
     contractTermMonths: extractContractTerm(clauses),
     probationMonths: extractProbation(clauses),
     monthlyWage: extractMonthlyWage(clauses),
     probationMonthlyWage: extractProbationWage(clauses),
     nonCompeteMonths: extractNonCompete(clauses),
+    payDayOfMonth: pick('payDayOfMonth'),
+    baseWage: pick('baseWage'),
+    performanceWage: pick('performanceWage'),
+    bonusWage: pick('bonusWage'),
+    dailyWorkHours: pick('dailyWorkHours'),
+    annualLeaveDays: pick('annualLeaveDays'),
+    confidentialityMonths: pick('confidentialityMonths'),
+    workLocationText: pick('workLocationText'),
+    socialInsuranceFundText: extractSocialInsuranceFund(clauses),
+    overtimeText: pick('overtimeText'),
+    breachText: pick('breachText'),
   }
 }

@@ -1,4 +1,4 @@
-import type { ContractClause, DiffKind, DiffResult } from './diff-template.ts'
+import type { ContractClause } from './diff-template.ts'
 import { FACT_META, type FactKey, type FactSet } from './extract-facts.ts'
 import type { RiskEvidence, RuleEngineResult, StatuteRef, UndeterminedItem } from './rule-engine.ts'
 import type { ContractTemplate, RiskLevel } from './schema.ts'
@@ -15,21 +15,17 @@ export type ReportRisk = {
   note?: string
 }
 
-export type ReportDiffItem = {
-  kind: DiffKind
-  sectionTitle: string | null
-  templateLabel: string | null
-  contractLabel: string | null
-  templateText: string | null
-  contractText: string | null
-}
-
 /**
- * 关键信息的三种取值状态。
- * `NOT_FOUND`（合同没写）本身就是一条提示——设计里明确要求把"未约定"的项标出来；
- * `UNRECOGNIZED`（写了但本工具没认出来）必须与"没写"区分开，否则会误导。
+ * 关键信息的取值状态。
+ * - `VALUE`：抽到了数值（期限/金额/天数），`value` 是带单位的结果；
+ * - `TEXT`：抽到了文本事实，`value` 就是合同原文片段——这类项"是什么"比"有没有"更有用；
+ * - `MENTIONED`：合同里有相关字样，但没能识别出具体值；`evidence` 带原文片段供人工核对；
+ * - `NOT_FOUND`：合同里连相关字样都没有。
+ *
+ * `MENTIONED` 必须与 `NOT_FOUND` 分开：把"没认出来"说成"没写"会冤枉合同，
+ * 把"有提及"说成"已核对"又会误导用户。
  */
-export type KeyInfoStatus = 'VALUE' | 'MENTIONED' | 'NOT_FOUND' | 'UNRECOGNIZED'
+export type KeyInfoStatus = 'VALUE' | 'TEXT' | 'MENTIONED' | 'NOT_FOUND'
 
 export type KeyInfoRow = {
   label: string
@@ -46,7 +42,6 @@ export type ContractReport = {
   counts: { red: number; yellow: number; blue: number }
   risks: ReportRisk[]
   undetermined: UndeterminedItem[]
-  diffs: { counts: Record<DiffKind, number>; items: ReportDiffItem[] }
   keyInfo: KeyInfoRow[]
   summaries: ReportSummary[]
   disclaimers: string[]
@@ -58,41 +53,87 @@ const LEVEL_LABELS: Readonly<Record<RiskLevel, string>> = { red: '严重', yello
 const LEVEL_ORDER: Readonly<Record<RiskLevel, number>> = { red: 0, yellow: 1, blue: 2 }
 
 type KeyInfoSource =
-  | { kind: 'fact'; factKey: FactKey }
-  | { kind: 'keyword'; keywords: string[] }
+  | { kind: 'fact'; factKey: FactKey; mention: readonly string[] }
+  | { kind: 'wageStructure' }
+
+/** 「工资结构」由三个工资分项合成，本身没有独立的事实键。 */
+const WAGE_STRUCTURE_KEYS: readonly FactKey[] = ['baseWage', 'performanceWage', 'bonusWage']
 
 /**
- * 劳动者最关心的关键信息。
- * - 有对应事实的用抽取出来的值（并给出原文片段）；
- * - 没有事实键的，只能判断"合同有没有提及"——**这不等同于核对了内容**，
- *   报告里的措辞必须体现这个差别，不能让人以为已经查过了。
+ * 劳动者最关心的关键信息，每一项都对应一条抽取规则。
+ *
+ * 这里原先有 11 项只做关键词存在性判断，报告里显示成「有提及（未核对内容）」——
+ * 等于什么都没说，而且关键词表覆盖不到真实写法时还会误报「合同未提及」。
+ * 现在每一项都取真值：取到了就显示值，取不到但合同里确实有相关字样，就摘原文出来让人自己核对。
+ *
+ * `mention` 只用于"没能识别出值"时的兜底判断，因此宁可宽一点：宽了最多是提示"有相关内容"，
+ * 窄了会把写了的项误报成"合同未提及"。
  */
 const KEY_INFO_ITEMS: readonly { label: string; source: KeyInfoSource }[] = [
-  { label: '合同期限', source: { kind: 'fact', factKey: 'contractTermMonths' } },
-  { label: '试用期', source: { kind: 'fact', factKey: 'probationMonths' } },
-  { label: '约定月工资', source: { kind: 'fact', factKey: 'monthlyWage' } },
-  { label: '试用期工资', source: { kind: 'fact', factKey: 'probationMonthlyWage' } },
-  { label: '竞业限制期限', source: { kind: 'fact', factKey: 'nonCompeteMonths' } },
-  { label: '工资结构', source: { kind: 'keyword', keywords: ['工资结构', '基本工资', '绩效工资', '奖金'] } },
-  { label: '基本工资', source: { kind: 'keyword', keywords: ['基本工资'] } },
-  { label: '绩效工资', source: { kind: 'keyword', keywords: ['绩效'] } },
-  { label: '奖金', source: { kind: 'keyword', keywords: ['奖金'] } },
+  { label: '合同期限', source: { kind: 'fact', factKey: 'contractTermMonths', mention: ['合同期限', '期限'] } },
+  { label: '试用期', source: { kind: 'fact', factKey: 'probationMonths', mention: ['试用期'] } },
+  {
+    label: '约定月工资',
+    source: { kind: 'fact', factKey: 'monthlyWage', mention: ['工资', '薪资', '薪酬', '劳动报酬'] },
+  },
+  { label: '试用期工资', source: { kind: 'fact', factKey: 'probationMonthlyWage', mention: ['试用期'] } },
+  {
+    label: '竞业限制期限',
+    source: { kind: 'fact', factKey: 'nonCompeteMonths', mention: ['竞业限制', '竞业禁止'] },
+  },
+  { label: '工资结构', source: { kind: 'wageStructure' } },
+  { label: '基本工资', source: { kind: 'fact', factKey: 'baseWage', mention: ['基本工资', '底薪'] } },
+  { label: '绩效工资', source: { kind: 'fact', factKey: 'performanceWage', mention: ['绩效'] } },
+  { label: '奖金', source: { kind: 'fact', factKey: 'bonusWage', mention: ['奖金', '奖励'] } },
   {
     label: '发薪日期',
-    // 关键词表要覆盖真实写法。实测被一句「工资支付方式：甲方于每月15日…发放上月工资」打穿过：
-    // 原表只有「发薪/支付日期/发放日期」，这句一个都不含，于是误报「合同未提及」。
     source: {
-      kind: 'keyword',
-      keywords: ['发薪', '发放日', '支付日期', '发放日期', '支付方式', '发放方式', '工资发放', '工资支付', '发放工资', '支付工资'],
+      kind: 'fact',
+      factKey: 'payDayOfMonth',
+      // 关键词表要覆盖真实写法。实测被一句「工资支付方式：甲方于每月15日…发放上月工资」打穿过：
+      // 原表只有「发薪/支付日期/发放日期」，这句一个都不含，于是误报「合同未提及」。
+      mention: [
+        '发薪',
+        '发放日',
+        '支付日期',
+        '发放日期',
+        '支付方式',
+        '发放方式',
+        '工资发放',
+        '工资支付',
+        '发放工资',
+        '支付工资',
+      ],
     },
   },
-  { label: '工作时间', source: { kind: 'keyword', keywords: ['工作时间', '工时'] } },
-  { label: '加班规则', source: { kind: 'keyword', keywords: ['加班'] } },
-  { label: '休假制度', source: { kind: 'keyword', keywords: ['休假', '年休假', '请假'] } },
-  { label: '五险一金', source: { kind: 'keyword', keywords: ['社会保险', '社保', '住房公积金'] } },
-  { label: '工作地点', source: { kind: 'keyword', keywords: ['工作地点'] } },
-  { label: '违约责任', source: { kind: 'keyword', keywords: ['违约金', '违约责任'] } },
-  { label: '保密协议', source: { kind: 'keyword', keywords: ['保密'] } },
+  {
+    label: '每日工作时间',
+    source: { kind: 'fact', factKey: 'dailyWorkHours', mention: ['工作时间', '工时'] },
+  },
+  { label: '加班规则', source: { kind: 'fact', factKey: 'overtimeText', mention: ['加班'] } },
+  {
+    label: '年休假',
+    // 只认"年休假"本名：范本里的"休息休假权利""法定节假日"是别的事项，
+    // 用宽泛的"休假"判断会把它们错算成对年休假的约定。
+    source: { kind: 'fact', factKey: 'annualLeaveDays', mention: ['年休假', '年假'] },
+  },
+  {
+    label: '五险一金',
+    source: {
+      kind: 'fact',
+      factKey: 'socialInsuranceFundText',
+      mention: ['社会保险', '社保', '住房公积金', '公积金'],
+    },
+  },
+  {
+    label: '工作地点',
+    source: { kind: 'fact', factKey: 'workLocationText', mention: ['工作地点', '工作地址', '办公地点'] },
+  },
+  {
+    label: '违约责任',
+    source: { kind: 'fact', factKey: 'breachText', mention: ['违约金', '违约责任'] },
+  },
+  { label: '保密期限', source: { kind: 'fact', factKey: 'confidentialityMonths', mention: ['保密'] } },
 ]
 
 const DISCLAIMERS: readonly string[] = [
@@ -102,50 +143,64 @@ const DISCLAIMERS: readonly string[] = [
   '合同中出现但本工具未覆盖的事项，不在本报告的检查范围内。',
 ]
 
-function firstClauseWith(clauses: ContractClause[], keywords: string[]): ContractClause | null {
+/**
+ * 没能取出值时，用关键词判断合同里到底有没有相关内容。
+ * 注意这里只用于区分「有提及」和「未提及」，**绝不**用它填值——关键词证明不了条款内容是什么。
+ *
+ * 摘录以命中的关键词为中心取一小段：条款动辄几百字，从头截会摘出跟该项毫不相干的原文。
+ */
+function mentionRow(label: string, clauses: ContractClause[], keywords: readonly string[]): KeyInfoRow {
   for (const clause of clauses) {
-    if (keywords.some((keyword) => clause.text.includes(keyword))) return clause
+    const hits = keywords.map((keyword) => clause.text.indexOf(keyword)).filter((index) => index !== -1)
+    if (hits.length === 0) continue
+    const index = Math.min(...hits)
+    const from = Math.max(0, index - 12)
+    const excerpt = `${from > 0 ? '…' : ''}${clause.text.slice(from, index + 60).replace(/\s+/g, ' ')}`
+    return { label, value: null, status: 'MENTIONED', evidence: excerpt.slice(0, 100) }
   }
-  return null
+  return { label, value: null, status: 'NOT_FOUND', evidence: null }
 }
 
-/** 解析关键信息表。事实类给出数值，关键词类只判断有没有提及。 */
-export function resolveKeyInfo(clauses: ContractClause[], facts: FactSet): KeyInfoRow[] {
-  return KEY_INFO_ITEMS.map((item) => {
-    if (item.source.kind === 'fact') {
-      const fact = facts[item.source.factKey]
-      const meta = FACT_META[item.source.factKey]
-      if (fact === undefined) {
-        return { label: item.label, value: null, status: 'UNRECOGNIZED' as const, evidence: null }
-      }
-      if (fact.value === null) {
-        return {
-          label: item.label,
-          value: null,
-          status: fact.method === 'UNRECOGNIZED' && /未约定|未找到/.test(fact.reason ?? '') ? ('NOT_FOUND' as const) : ('UNRECOGNIZED' as const),
-          evidence: fact.evidence?.text ?? null,
-        }
-      }
-      return {
-        label: item.label,
-        value: `${fact.value}${meta.unit}`,
-        status: 'VALUE' as const,
-        evidence: fact.evidence?.text ?? null,
-      }
-    }
+function resolveRow(
+  item: { label: string; source: KeyInfoSource },
+  clauses: ContractClause[],
+  facts: FactSet,
+): KeyInfoRow {
+  const { label, source } = item
 
-    const hit = firstClauseWith(clauses, item.source.keywords)
-    return hit === null
-      ? { label: item.label, value: null, status: 'NOT_FOUND' as const, evidence: null }
-      : { label: item.label, value: '合同中有提及', status: 'MENTIONED' as const, evidence: hit.text.slice(0, 120) }
-  })
+  if (source.kind === 'wageStructure') {
+    const parts = WAGE_STRUCTURE_KEYS.flatMap((key) => {
+      const value = facts[key].value
+      return value === null ? [] : [`${FACT_META[key].label}${value}元`]
+    })
+    if (parts.length > 0) return { label, value: parts.join(' + '), status: 'VALUE', evidence: null }
+    return mentionRow(label, clauses, ['工资结构', '工资构成', '工资组成', '基本工资', '绩效工资', '奖金'])
+  }
+
+  const fact = facts[source.factKey]
+  const meta = FACT_META[source.factKey]
+  if (fact.value !== null) {
+    return { label, value: `${fact.value}${meta.unit}`, status: 'VALUE', evidence: fact.evidence?.text ?? null }
+  }
+  if (fact.textValue !== null) {
+    return { label, value: fact.textValue, status: 'TEXT', evidence: fact.evidence?.text ?? null }
+  }
+  return mentionRow(label, clauses, source.mention)
+}
+
+/** 解析关键信息表：每一项都取真值，取不到值则退回到"有没有提及"并附原文。 */
+export function resolveKeyInfo(clauses: ContractClause[], facts: FactSet): KeyInfoRow[] {
+  return KEY_INFO_ITEMS.map((item) => resolveRow(item, clauses, facts))
 }
 
 function describeRow(row: KeyInfoRow): string {
-  if (row.status === 'VALUE') return row.value ?? '—'
-  if (row.status === 'MENTIONED') return '合同中有提及（仅表示提到了，未核对具体内容）'
-  if (row.status === 'NOT_FOUND') return '合同未提及'
-  return '未能识别（写了相关内容，但本工具没认出来）'
+  if (row.status === 'VALUE' || row.status === 'TEXT') return row.value ?? '—'
+  if (row.status === 'MENTIONED') {
+    return row.evidence === null
+      ? '有相关约定，但本工具没能识别出具体内容'
+      : `有相关约定，但本工具没能识别出具体内容，请自行核对；原文：${row.evidence}`
+  }
+  return '合同未提及'
 }
 
 function buildSummary(
@@ -169,15 +224,14 @@ function buildSummary(
 export type ReportInput = {
   template: ContractTemplate
   contractClauses: ContractClause[]
-  diff: DiffResult
   facts: FactSet
   ruleResult: RuleEngineResult
   ruleSetVersion: string
 }
 
-/** 把比对结果、风险项、无法判定项、事实组装成一份可展示的报告。 */
+/** 把风险项、无法判定项、关键信息组装成一份可展示的报告。 */
 export function buildReport(input: ReportInput): ContractReport {
-  const { template, contractClauses, diff, facts, ruleResult } = input
+  const { template, contractClauses, facts, ruleResult } = input
   const risks: ReportRisk[] = [...ruleResult.findings].sort(
     (a, b) => LEVEL_ORDER[a.level] - LEVEL_ORDER[b.level] || a.ruleCode.localeCompare(b.ruleCode),
   )
@@ -201,17 +255,6 @@ export function buildReport(input: ReportInput): ContractReport {
     counts,
     risks,
     undetermined,
-    diffs: {
-      counts: diff.counts,
-      items: diff.items.map((item) => ({
-        kind: item.kind,
-        sectionTitle: item.sectionTitle,
-        templateLabel: item.templateLabel,
-        contractLabel: item.contractLabel,
-        templateText: item.templateText,
-        contractText: item.contractText,
-      })),
-    },
     keyInfo,
     summaries: [
       buildSummary(
@@ -221,7 +264,7 @@ export function buildReport(input: ReportInput): ContractReport {
         keyInfo,
         risks,
       ),
-      buildSummary('工时信息', ['工作时间', '加班规则', '休假制度'], ['工时与加班'], keyInfo, risks),
+      buildSummary('工时信息', ['每日工作时间', '加班规则', '年休假'], ['工时与加班'], keyInfo, risks),
       buildSummary('社保福利', ['五险一金'], ['社会保险'], keyInfo, risks),
     ],
     disclaimers: [...DISCLAIMERS],

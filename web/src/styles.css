@@ -402,6 +402,10 @@ dd {
   color: var(--amber);
 }
 
+.key-info tr.mentioned td {
+  color: var(--muted);
+}
+
 .empty {
   color: var(--good);
   margin: 0;

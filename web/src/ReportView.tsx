@@ -1,12 +1,18 @@
-import type { ContractReport } from '../../src/build-report.ts'
+import type { ContractReport, KeyInfoRow } from '../../src/build-report.ts'
 
 const LEVEL_LABEL: Record<string, string> = { red: '严重', yellow: '需关注', blue: '提示' }
 
-function describeKeyInfo(status: string, value: string | null): string {
-  if (status === 'VALUE') return value ?? '—'
-  if (status === 'MENTIONED') return '有提及（未核对内容）'
-  if (status === 'NOT_FOUND') return '合同未提及'
-  return '未能识别（需人工核对）'
+/**
+ * 关键信息一行的显示文本。
+ * 取到值就直接给值（`TEXT` 的值本身就是合同原文片段）；只有确实没取出值、
+ * 但合同里有相关字样时才落到 `MENTIONED`，此时把原文摘要一起给出来，让人能自己核对。
+ */
+function describeKeyInfo(row: KeyInfoRow): string {
+  if (row.status === 'VALUE' || row.status === 'TEXT') return row.value ?? '—'
+  if (row.status === 'MENTIONED') {
+    return row.evidence === null ? '有相关约定，但未能识别出具体内容' : `有相关约定，但未能识别出具体内容：${row.evidence}`
+  }
+  return '合同未提及'
 }
 
 export function ReportView({ report }: { report: ContractReport }): React.ReactElement {
@@ -92,9 +98,9 @@ export function ReportView({ report }: { report: ContractReport }): React.ReactE
         <table className="card key-info">
           <tbody>
             {report.keyInfo.map((row) => (
-              <tr key={row.label} className={row.status === 'NOT_FOUND' ? 'missing' : undefined}>
+              <tr key={row.label} className={row.status === 'NOT_FOUND' ? 'missing' : row.status === 'MENTIONED' ? 'mentioned' : undefined}>
                 <th scope="row">{row.label}</th>
-                <td>{describeKeyInfo(row.status, row.value)}</td>
+                <td>{describeKeyInfo(row)}</td>
               </tr>
             ))}
           </tbody>

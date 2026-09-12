@@ -123,3 +123,75 @@ test('条款里仍有多个日期区间时判定为歧义，不猜一个', () =>
   assert.equal(ambiguous.contractTermMonths.value, null)
   assert.match(ambiguous.contractTermMonths.reason ?? '', /多个期限区间/)
 })
+
+test('多选项工资条款：没被选中的发放方式里的数额不算数', () => {
+  const text =
+    '甲方采用以下第1种方式向乙方以货币形式支付工资，于每月15日前足额支付：' +
+    '1.月工资6000元。2.计件工资。计件单价为示例。' +
+    '3.基本工资和绩效工资相结合的工资分配办法，乙方月基本工资4500元，绩效工资计发办法为考核。4.双方约定的其他方式。'
+  const facts = extractFacts(clause(text))
+
+  assert.equal(facts.monthlyWage.value, 6000)
+  // 发薪日写在选项清单之前的共用文字里，照样要取到
+  assert.equal(facts.payDayOfMonth.value, 15)
+  // 第 3 种没被选中，里面的数额不能报出来
+  assert.equal(facts.baseWage.value, null)
+  assert.equal(facts.performanceWage.value, null)
+})
+
+test('选中组合工资那一项时，取基本工资与绩效工资，但不硬凑一个"约定月工资"', () => {
+  const text =
+    '甲方采用以下第3种方式向乙方支付工资，于每月10日前足额支付：' +
+    '1.月工资6000元。3.基本工资和绩效工资相结合的工资分配办法，乙方月基本工资4500元，绩效工资1200元。'
+  const facts = extractFacts(clause(text))
+
+  assert.equal(facts.baseWage.value, 4500)
+  assert.equal(facts.performanceWage.value, 1200)
+  assert.equal(facts.payDayOfMonth.value, 10)
+  // 组合工资没有"一个月薪数字"，取第一个金额会把它错当成约定工资
+  assert.equal(facts.monthlyWage.value, null)
+})
+
+test('工时、年休假、保密期限按标签取值', () => {
+  const facts = extractFacts(
+    clauses([
+      '甲方安排乙方执行标准工时工作制，每日工作时间不超过8小时，每周工作时间不超过40小时。',
+      '乙方依法享有带薪年休假，每年年休假10天。',
+      '乙方离职后应继续履行保密义务，保密期限为3年。',
+    ]),
+  )
+  assert.equal(facts.dailyWorkHours.value, 8)
+  assert.equal(facts.dailyWorkHours.unit, '小时')
+  assert.equal(facts.annualLeaveDays.value, 10)
+  assert.equal(facts.confidentialityMonths.value, 36)
+})
+
+test('五险一金要区分"含公积金"与"只提到社保"', () => {
+  const onlySocial = extractFacts(clause('甲方依法为乙方缴纳社会保险。'))
+  assert.equal(onlySocial.socialInsuranceFundText.textValue, '只提到社会保险，未提住房公积金')
+
+  const withFund = extractFacts(clause('甲方依法为乙方缴纳社会保险和住房公积金。'))
+  assert.equal(withFund.socialInsuranceFundText.textValue, '含住房公积金')
+})
+
+test('文本类事实摘标签所在的那一句，不跨句截取（真实范本发现的缺陷）', () => {
+  const facts = extractFacts(
+    clause(
+      '1.标准工时工作制。甲方不得强迫或者变相强迫乙方加班加点。甲方安排乙方加班的，应依法安排补休或支付加班工资。',
+    ),
+  )
+  // 从「加班」往后硬截 60 字会得到「加班加点。甲方安排乙方加班的…」这种跨句的片段
+  assert.equal(facts.overtimeText.textValue, '甲方不得强迫或者变相强迫乙方加班加点')
+})
+
+test('工作地点取合同原句，不是"有提及"', () => {
+  const facts = extractFacts(clause('甲方依法为乙方缴纳社会保险。工作地点为北京市朝阳区。乙方应保守甲方商业秘密。'))
+  assert.equal(facts.workLocationText.textValue, '工作地点为北京市朝阳区')
+})
+
+test('荒谬的数值一律拒绝，宁可报未识别', () => {
+  // 发薪日不可能是 45 日
+  assert.equal(extractFacts(clause('甲方于每月45日发放工资。')).payDayOfMonth.value, null)
+  // 每日工作时间不可能是 26 小时
+  assert.equal(extractFacts(clause('每日工作时间为26小时。')).dailyWorkHours.value, null)
+})

@@ -27,7 +27,7 @@ function runCase(rule: RiskRule, ruleCase: (typeof ruleSet.rules)[number]['cases
   const facts = { ...extractFacts(clauses) }
   for (const [key, value] of Object.entries(ruleCase.facts ?? {})) {
     const factKey = key as FactKey
-    facts[factKey] = { key: factKey, value, unit: null, evidence: null, method: 'EXPLICIT' }
+    facts[factKey] = { key: factKey, value, textValue: null, unit: null, evidence: null, method: 'EXPLICIT' }
   }
   return evaluateRules([rule], clauses, lookup, facts)
 }
