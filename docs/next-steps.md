@@ -4,6 +4,37 @@
 
 ---
 
+## 恢复入口（2026-09-12 收尾）
+
+作者已把项目收尾：核心闭环完成、线上可用、文档与许可齐备。以下三样是下次接着干时最省时间的部分。
+
+**回归一套**（顺序不能反，网页端构建依赖根目录产出的数据）：
+
+```bash
+npm install && npm run check                    # 类型检查 + 118 单测 + 三个构建 + 数据校验 + 评测 5/5
+cd web && npm install && npm run build          # 网页端（tsc --noEmit + vite build）
+```
+
+**三个容易踩的坑**：
+
+1. **push 必须走代理**：`git -c http.proxy=http://127.0.0.1:65532 -c https.proxy=http://127.0.0.1:65532 push`。本机直连 github.com 超时；GitHub API 经代理被 403，所以**读不到 Actions 状态**，只能看线上产物判断部署是否成功（抓 `index.html` → 找 `assets/index-*.js` → 在其中搜新文案）。
+2. **产物时间戳**：`provenance.generatedAt` 必须走 `src/build-time.ts` 的 `buildTimestamp()`。要"逐字节复现"就设 `SOURCE_DATE_EPOCH`（见 README「数据管线的四个机制」第 2 条）。
+3. **浏览器测试用的文件在 `tmp/`**（已 gitignore，不随仓库走）：`real-contract.pdf`（4 页合法标准版）、`word-radical.docx`（码位错乱版）、`fixture-a.docx` / `fixture-b.docx`（政府公开 Word 合同）、`fake-old.doc`、`word-no-text.docx`，以及生成它们的 `tmp/gen-docx-fixtures.mjs`。**如果这些文件丢了，需要重新准备**——它们不在版本控制里。上传路径的自动化做法见 `AGENTS.md`（`browser_drop` 到 `.input-card`）。
+
+**未决事项**（都不影响使用，接手时按需处理）：
+
+| # | 事项 | 说明 |
+|---|---|---|
+| 1 | **About 描述与 README 口径冲突** | About 写"全程使用DeepSeek制作"，README「关于完成方式」写"与 Grok（xAI）结对完成"。这是**唯一一处公开页面上的自相矛盾**，需要作者定口径后统一 |
+| 2 | README 里的包体数字略旧 | 「主包 148 KB gzip」，实测为 150.21 kB gzip。数据一变这个数就会动，建议改成"约 150 KB" |
+| 3 | CI 构建网页端未固定时间戳 | 网页端把数据 JSON 打包进去，其中的 `generatedAt` 是构建时间，于是同一提交两次构建的 bundle 文件名不同（内容一致）。修法一行：工作流里加 `SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)` |
+| 4 | 缺一个"两分钟版本"的 README 入口 | 现在 README 很长，审阅者多半只看前二十行 |
+| 5 | 缺一条一致性断言 | 每个事实键应当出现在 `KEY_INFO_ITEMS`（当前恰好全覆盖，但没有断言守着） |
+
+**唯一真正的缺口**仍然没变：没有真实企业合同、没有真实用户。老式 `.doc` 与扫描件／拍照件按作者决定**不做**（理由见下）。
+
+---
+
 ## 当前状态
 
 数据层、比对引擎、事实抽取、规则引擎、标注与报告、网页端均已完成并验证。
