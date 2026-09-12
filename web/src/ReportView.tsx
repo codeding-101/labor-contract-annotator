@@ -2,13 +2,6 @@ import type { ContractReport } from '../../src/build-report.ts'
 
 const LEVEL_LABEL: Record<string, string> = { red: '严重', yellow: '需关注', blue: '提示' }
 
-const DIFF_LABEL: Record<string, string> = {
-  MISSING_IN_CONTRACT: '范本有、合同没有',
-  EXTRA_IN_CONTRACT: '范本没有、合同多了',
-  MODIFIED: '关键条款被改写',
-  BLANK_LEFT: '填空处留白',
-}
-
 function describeKeyInfo(status: string, value: string | null): string {
   if (status === 'VALUE') return value ?? '—'
   if (status === 'MENTIONED') return '有提及（未核对内容）'
@@ -17,7 +10,6 @@ function describeKeyInfo(status: string, value: string | null): string {
 }
 
 export function ReportView({ report }: { report: ContractReport }): React.ReactElement {
-  const diffTotal = Object.values(report.diffs.counts).reduce((sum, value) => sum + value, 0)
   const annotated = report.counts.red + report.counts.yellow + report.counts.blue
 
   return (
@@ -94,37 +86,6 @@ export function ReportView({ report }: { report: ContractReport }): React.ReactE
           </ul>
         </section>
       )}
-
-      <section>
-        <h2>与官方范本的差异（{diffTotal} 处）</h2>
-        <p className="muted">对照范本：{report.template.name}（{report.template.regionName}）</p>
-        {diffTotal === 0 ? (
-          <p className="card empty">逐条比对后没有发现差异。</p>
-        ) : (
-          report.diffs.items.map((item, index) => (
-            <article key={`${item.kind}-${index}`} className="card diff">
-              <header>
-                <span className="badge muted">{DIFF_LABEL[item.kind] ?? item.kind}</span>
-                <span className="muted">
-                  范本 {item.templateLabel ?? '—'} · 合同 {item.contractLabel ?? '—'}
-                </span>
-              </header>
-              {item.templateText !== null && (
-                <p className="quote">
-                  <span className="clause">范本</span>
-                  {item.templateText}
-                </p>
-              )}
-              {item.contractText !== null && (
-                <p className="quote">
-                  <span className="clause">合同</span>
-                  {item.contractText}
-                </p>
-              )}
-            </article>
-          ))
-        )}
-      </section>
 
       <section>
         <h2>关键信息</h2>

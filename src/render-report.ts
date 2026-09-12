@@ -1,13 +1,5 @@
 import type { ContractReport, KeyInfoRow } from './build-report.ts'
-import type { DiffKind } from './diff-template.ts'
 import type { RiskLevel } from './schema.ts'
-
-const DIFF_LABELS: Readonly<Record<DiffKind, string>> = {
-  MISSING_IN_CONTRACT: '范本有、合同没有',
-  EXTRA_IN_CONTRACT: '范本没有、合同多了',
-  MODIFIED: '关键条款被改写',
-  BLANK_LEFT: '填空处留白',
-}
 
 const LEVEL_LABELS: Readonly<Record<RiskLevel, string>> = { red: '🔴 严重', yellow: '🟡 需关注', blue: '🔵 提示' }
 
@@ -65,20 +57,6 @@ export function renderReport(report: ContractReport): string {
     }
     push()
   }
-
-  const diffTotal = Object.values(report.diffs.counts).reduce((sum, value) => sum + value, 0)
-  push('─'.repeat(64))
-  push(`与官方范本的差异：共 ${diffTotal} 处`)
-  for (const [kind, count] of Object.entries(report.diffs.counts)) {
-    if (count > 0) push(`  ${DIFF_LABELS[kind as DiffKind]}：${count} 处`)
-  }
-  for (const item of report.diffs.items) {
-    push()
-    push(`  [${DIFF_LABELS[item.kind]}] 范本=${item.templateLabel ?? '—'}　合同=${item.contractLabel ?? '—'}`)
-    if (item.templateText !== null) push(`    范本：${item.templateText}`)
-    if (item.contractText !== null) push(`    合同：${item.contractText}`)
-  }
-  push()
 
   push('─'.repeat(64))
   push('关键信息')
