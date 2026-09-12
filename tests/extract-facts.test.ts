@@ -59,6 +59,27 @@ test('竞业限制期限换算为月', () => {
   assert.equal(extractFacts(clause('乙方离职后三年内不得从事同类业务。竞业限制期限为三年。')).nonCompeteMonths.value, 36)
 })
 
+test('同一句里有多个金额时按标签取值，不靠位置猜（真实合同发现的缺陷）', () => {
+  // 真实合同里的写法：一句话里四个金额，试用期工资在前、转正工资在后、后面还有工资构成
+  const clauseText =
+    '试用期工资：人民币4800元/月，试用期满转正工资：人民币6000元/月，包含基本工资4500元、绩效工资1500元。'
+  const facts = extractFacts([{ sectionTitle: null, articleNo: null, label: '第三条', text: clauseText }])
+
+  // 旧实现取「这一条里最后一个金额」，得到的是绩效工资 1500
+  assert.equal(facts.probationMonthlyWage.value, 4800)
+  assert.equal(facts.monthlyWage.value, 6000)
+})
+
+test('只有试用期工资、没有转正工资时，宁可报未识别也不拿它当约定工资', () => {
+  const facts = extractFacts([
+    { sectionTitle: null, articleNo: null, label: '第一条', text: '试用期工资为4800元/月。' },
+  ])
+  assert.equal(facts.probationMonthlyWage.value, 4800)
+  // 若把 4800 当成约定工资，80% 的判断基准就会被低估
+  assert.equal(facts.monthlyWage.value, null)
+  assert.equal(facts.monthlyWage.method, 'UNRECOGNIZED')
+})
+
 test('未识别一律为 null 并给出原因，绝不当成 0', () => {
   const facts = extractFacts(clause('甲方按月向乙方支付劳动报酬，具体金额面议。'))
 

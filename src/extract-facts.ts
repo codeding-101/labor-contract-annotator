@@ -202,28 +202,72 @@ function extractProbation(clauses: ContractClause[]): Fact {
 
 const AMOUNT_PATTERN = /([0-9][0-9,，]*)\s*元/
 
+/** 金额片段的截止符：遇到这些就不再往后找，避免越过本项抓到下一项的钱。 */
+const AMOUNT_STOP = /[，,；;。\n]/
+
+/**
+ * 带标签的金额抽取：先定位标签，再取标签**后面第一个**金额，且不越过标点。
+ *
+ * 不能用「这一条里最后一个金额」这种按位置猜的启发式。实测被一份真实合同打穿过：
+ * 「试用期工资：人民币4800元/月，试用期满转正工资：人民币6000元/月，包含基本工资4500元、绩效工资1500元」
+ * ——取最后一个金额得到 1500，那是绩效工资，结论完全错了。
+ */
+function amountAfterLabel(
+  text: string,
+  labelPattern: RegExp,
+  maxWindow = 40,
+): { value: number; text: string } | null {
+  const label = labelPattern.exec(text)
+  if (label === null) return null
+
+  const from = label.index + label[0].length
+  const window = text.slice(from, from + maxWindow)
+  const stop = AMOUNT_STOP.exec(window)
+  const scope = stop === null ? window : window.slice(0, stop.index)
+
+  const amount = AMOUNT_PATTERN.exec(scope)
+  if (amount === null) return null
+  const value = toNumber(amount[1] ?? '')
+  if (value === null) return null
+
+  return { value, text: `${label[0]}${scope.slice(0, amount.index)}${amount[0]}` }
+}
+
+/** 试用期工资的标签写法。 */
+const PROBATION_WAGE_LABEL = /试用期[^。，；]{0,12}?工资/
+/** 转正后（即约定工资）的标签写法。 */
+const REGULAR_WAGE_LABEL = /(?:转正后|转正|正式录用后|月工资|税前月工资)/
+
 function extractMonthlyWage(clauses: ContractClause[]): Fact {
   for (const clause of clauses) {
     if (!/(月工资|工资|薪资|薪酬)/.test(clause.text)) continue
-    const match = AMOUNT_PATTERN.exec(clause.text)
-    if (match === null) continue
-    const value = toNumber(match[1] ?? '')
+
+    const labelled = amountAfterLabel(clause.text, REGULAR_WAGE_LABEL)
+    if (labelled !== null) {
+      return fact('monthlyWage', labelled.value, '元', { clauseLabel: clause.label, text: labelled.text }, 'EXPLICIT')
+    }
+
+    // 没有「转正/月工资」这类标签时，若这一条只讲了试用期工资，就不能拿它的金额当约定工资——
+    // 那会低估 80% 的比对基准。宁可报未识别。
+    if (/试用期/.test(clause.text)) continue
+
+    const first = AMOUNT_PATTERN.exec(clause.text)
+    if (first === null) continue
+    const value = toNumber(first[1] ?? '')
     if (value === null) continue
-    return fact('monthlyWage', value, '元', { clauseLabel: clause.label, text: match[0] }, 'EXPLICIT')
+    return fact('monthlyWage', value, '元', { clauseLabel: clause.label, text: first[0] }, 'EXPLICIT')
   }
-  return unrecognized('monthlyWage', '未找到可识别的工资金额')
+  return unrecognized('monthlyWage', '未找到可识别的约定工资')
 }
 
 function extractProbationWage(clauses: ContractClause[]): Fact {
   for (const clause of clauses) {
     if (!/试用期/.test(clause.text)) continue
     if (!/工资/.test(clause.text)) continue
-    const matches = [...clause.text.matchAll(new RegExp(AMOUNT_PATTERN.source, 'g'))]
-    const last = matches.at(-1)
-    if (last === undefined) continue
-    const value = toNumber(last[1] ?? '')
-    if (value === null) continue
-    return fact('probationMonthlyWage', value, '元', { clauseLabel: clause.label, text: last[0] }, 'EXPLICIT')
+
+    const hit = amountAfterLabel(clause.text, PROBATION_WAGE_LABEL)
+    if (hit === null) continue
+    return fact('probationMonthlyWage', hit.value, '元', { clauseLabel: clause.label, text: hit.text }, 'EXPLICIT')
   }
   return unrecognized('probationMonthlyWage', '未找到可识别的试用期工资约定')
 }
