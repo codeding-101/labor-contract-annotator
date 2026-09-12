@@ -3,7 +3,8 @@ import { join } from 'node:path'
 import { diffAgainstTemplate, flattenTemplate, type ContractClause, type DiffKind, type TemplateClause } from './diff-template.ts'
 import { extractFacts, FACT_META, type FactKey } from './extract-facts.ts'
 import { fillBlanks } from './fill-template.ts'
-import { ContractTemplateSchema } from './schema.ts'
+import { evaluateRules, type StatuteRef, type StatuteLookup } from './rule-engine.ts'
+import { ContractTemplateSchema, RiskRuleSetSchema, StatuteSchema } from './schema.ts'
 
 const ROOT = join(import.meta.dirname, '..')
 const DATA_DIR = join(ROOT, 'data', 'templates')
@@ -103,6 +104,23 @@ function describe(counts: Record<DiffKind, number>): string {
   return parts.length === 0 ? '无差异' : parts.join(' ')
 }
 
+function loadStatuteLookup(): StatuteLookup {
+  const dir = join(ROOT, 'data', 'statutes')
+  const byId = new Map<string, StatuteRef>()
+  for (const file of readdirSync(dir).filter((name) => name.endsWith('.json'))) {
+    const statute = StatuteSchema.parse(JSON.parse(readFileSync(join(dir, file), 'utf8')))
+    for (const article of statute.articles) {
+      byId.set(article.id, {
+        id: article.id,
+        lawName: statute.name,
+        articleLabel: article.articleLabel,
+        text: article.text,
+      })
+    }
+  }
+  return (id) => byId.get(id) ?? null
+}
+
 function main(): number {
   let files: string[]
   try {
@@ -138,6 +156,24 @@ function main(): number {
     for (const key of factKeys) {
       if (sampleFacts[key].value === null) {
         problems.push(`${file}: 真实范本数据上没能抽出「${FACT_META[key].label}」`)
+      }
+    }
+
+    // 官方范本本身应当是合规的，规则在它身上不该报出任何风险项。
+    // 报出来就说明关键词放宽过头、产生了误报——这是防止"修漏报反手制造误报"的闸门。
+    const ruleSet = RiskRuleSetSchema.parse(
+      JSON.parse(readFileSync(join(ROOT, 'rules', 'labor-contract-law.json'), 'utf8')),
+    )
+    const ruleResult = evaluateRules(ruleSet.rules, sampleContract, loadStatuteLookup(), sampleFacts)
+    console.log(
+      `  规则跑在示例合同上：风险项 ${ruleResult.findings.length}  无法判定 ${ruleResult.undetermined.length}`,
+    )
+    if (ruleResult.findings.length > 0) {
+      problems.push(
+        `${file}: 规则在官方范本上报出了 ${ruleResult.findings.length} 条风险（应为 0，疑似误报）：${ruleResult.findings.map((finding) => finding.ruleCode).join('、')}`,
+      )
+      for (const finding of ruleResult.findings) {
+        console.log(`      ${finding.ruleCode}  证据：${finding.evidence.text.slice(0, 60)}`)
       }
     }
 

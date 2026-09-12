@@ -48,6 +48,7 @@
   2. **多选项条款先用 `pickOption` 消歧再抽**（范本大量用「下列第 N 种」）。不消歧会抓到没被选中的选项，得出错误事实。
   3. 事实键定义在 `src/schema.ts` 的 `FACT_KEYS`（rule 的 `field`/`ratioOf`/`dependsOn` 只能取这些值，写错键名 schema 会拦下）。新增事实要同时改 schema 与 `extract-facts.ts`。
 - 改比对引擎或事实抽取后必须跑 `npm run eval:diff`：它除了验四类差异，还用**真实范本数据**（不是手写夹具）跑一遍事实抽取，任何一项抽出"未识别"都会失败。手写夹具会掩盖真实文本的形态问题——已经踩过一次（相邻填空位未合并）。
+- `eval:diff` 里还有一道闸门：**把规则跑在官方范本派生的示例合同上，要求报出 0 条风险项**。范本本身是合规的，报出来就是关键词放宽过头导致的误报。**为了修漏报而放宽关键词后，务必看这道闸门有没有亮**——这是防"修一个漏报、制造十个误报"的唯一自动手段。
 - 抽取器宁可少收不可错收：条号不连续即停止并报错。不要为了让数据"看起来完整"而放宽断言。
 
 ## 环境事实（本机已确认，不必再探测）
@@ -69,6 +70,15 @@
 
   **能用的是 `web_fetch`**（客户端自己抓目标网址，用 `cn.bing.com`，`www.bing.com` 会跨域重定向）。抓官方页面用 `Invoke-WebRequest -OutFile` 直接落字节最可靠。需要"搜索"时，请人用浏览器找 URL 再交给 `web_fetch`，比让工具编要可靠。
 - 代理端口 `65532` 绑定在 `0.0.0.0`（监听全部网卡）。若非有意让局域网共享，建议关掉客户端的 allow-lan，否则同网段的人可以借道你的代理。
+- **抓国内政务网站必须绕过系统代理。** Clash 是全局模式，会把国内站点也绕到境外节点出口，而政务网站对境外出口 IP 常常直接返回 **403**。实测同一个 URL：经代理 403、直连 200。所以用 `Invoke-WebRequest`（它默认走系统代理）会失败，要用 `HttpWebRequest` 并把 `Proxy` 设为 `$null`：
+
+  ```powershell
+  $req = [System.Net.HttpWebRequest]::Create($url)
+  $req.Proxy = $null          # 关键：绕开系统代理
+  $req.UserAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+  $resp = $req.GetResponse()
+  ```
+  抓快照要落原始字节（`$resp.GetResponseStream().CopyTo($fileStream)`），不要经 `Set-Content` 转一道，否则哈希对不上。
 - `flk.npc.gov.cn`（国家法律法规数据库）是 SPA，`/api/detail` 取不到数据。法条来源目前靠政府网站静态页。
 - 浏览器验证：playwright MCP 已配好。**改界面必须真的在浏览器里走一遍**，不要只看构建是否通过。
 
