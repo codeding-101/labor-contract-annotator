@@ -20,7 +20,7 @@
 | 案例语料 | 完成（v0）：3 份案例文档共 25 个案例，为规则提供带裁判结果的真实措辞 |
 | 标注与报告 | 完成（v0）：只做标注不给评分；报告组装＋文本渲染；示例合同自检零标注 |
 | 网页端 | 完成（v0）：纯前端应用，粘贴文本、上传 PDF 或 .docx；浏览器实测通过（Chromium） |
-| 部署 | 已推送代码到 <https://github.com/codeding-101/annotator->；待开启 Pages |
+| 部署 | 已启用 GitHub Pages：<https://codeding-101.github.io/annotator-/>（推送 `main` 自动构建部署） |
 | 真实合同接入 | 部分完成：PDF（带文字层）与 Word（.docx）已支持；老式 .doc 与图片未接 |
 
 ---
