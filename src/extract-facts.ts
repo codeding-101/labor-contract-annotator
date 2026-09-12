@@ -508,7 +508,7 @@ function extractByValueSpec(clauses: ContractClause[], spec: ValueSpec): Fact {
 }
 
 /**
- * 取标签所在的那一句。
+ * 取标签所在的那一句（含结尾标点，摘出来才是一句完整的话）。
  *
  * 不能从标签起往后截固定长度：条款里的句号、分号、换行都很密，截出来会跨句，
  * 报告里就会出现「加班加点。方 2.依法实行以示例为周期…」这种半截不相干的原文。
@@ -522,12 +522,26 @@ export function sentenceAround(text: string, index: number, maxLength: number): 
   const ends = ['。', '；', '\n']
     .map((mark) => text.indexOf(mark, index))
     .filter((found) => found !== -1)
-  const end = ends.length === 0 ? text.length : Math.min(...ends)
+  const end = ends.length === 0 ? text.length : Math.min(...ends) + 1
   return text
     .slice(start + 1, end)
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, maxLength)
+}
+
+/** 章节标题的上限。中文合同的标题都短。 */
+const HEADING_MAX_LENGTH = 20
+
+/**
+ * 看着像章节标题的一行：很短，且没有句号/分号这类结尾标点。
+ *
+ * 为什么需要它：合同里「违约责任」「工作内容和工作地点」「劳动报酬及支付」这些标题
+ * 会命中同一批关键词，但它们不是内容——把标题当成"合同对这个事项的约定"摘出来，
+ * 用户什么也得不到。真实正文句子几乎都以标点收尾。
+ */
+export function looksLikeHeading(sentence: string): boolean {
+  return sentence.length <= HEADING_MAX_LENGTH && !/[。；;!？?]$/.test(sentence)
 }
 
 function extractByTextSpec(clauses: ContractClause[], spec: TextSpec): Fact {
@@ -538,6 +552,8 @@ function extractByTextSpec(clauses: ContractClause[], spec: TextSpec): Fact {
       if (match === null) continue
       const snippet = sentenceAround(clause.text, match.index, spec.maxLength ?? 40)
       if (snippet.length < MIN_SNIPPET) continue
+      // 标题不是内容：命中「四、违约责任」这种章节标题时继续往后找真正的条款句子
+      if (looksLikeHeading(snippet)) continue
       return textFact(spec.key, snippet, { clauseLabel: clause.label, text: snippet })
     }
   }

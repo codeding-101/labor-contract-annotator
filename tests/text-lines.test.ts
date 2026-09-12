@@ -96,6 +96,13 @@ test('被映射成部首的字形要修回统一汉字（真实合同 PDF 发现
   assert.match(assessed.text, /中华人民共和国/)
 })
 
+test('CJK 兼容汉字同样修回统一汉字', () => {
+  // 与康熙部首同一类问题：码位不同、字形看着是同一个字。F900 段的兼容汉字由 NFKC 覆盖
+  const assessed = assessExtractedText('\uF900\uF9B8 等字样', 0.4, 5)
+  assert.equal(assessed.text, '豈隸 等字样')
+  assert.equal(assessed.repairedCompatChars, 2)
+})
+
 test('修复只动部首与兼容汉字，不改全角标点与数字（报告要原样引用合同）', () => {
   const raw = '工资８０００元，于每月十五日前支付（含绩效）。'
   assert.equal(assessExtractedText(raw, 0.4, 5).text, raw)

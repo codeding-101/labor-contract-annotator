@@ -181,12 +181,12 @@ test('文本类事实摘标签所在的那一句，不跨句截取（真实范�
     ),
   )
   // 从「加班」往后硬截 60 字会得到「加班加点。甲方安排乙方加班的…」这种跨句的片段
-  assert.equal(facts.overtimeText.textValue, '甲方不得强迫或者变相强迫乙方加班加点')
+  assert.equal(facts.overtimeText.textValue, '甲方不得强迫或者变相强迫乙方加班加点。')
 })
 
 test('工作地点取合同原句，不是"有提及"', () => {
   const facts = extractFacts(clause('甲方依法为乙方缴纳社会保险。工作地点为北京市朝阳区。乙方应保守甲方商业秘密。'))
-  assert.equal(facts.workLocationText.textValue, '工作地点为北京市朝阳区')
+  assert.equal(facts.workLocationText.textValue, '工作地点为北京市朝阳区。')
 })
 
 test('荒谬的数值一律拒绝，宁可报未识别', () => {
@@ -236,6 +236,20 @@ test('标签出现多次时，跳过后面没有金额的那几次（真实合�
   assert.equal(facts.baseWage.value, 4500)
 })
 
+test('章节标题不算文本类事实的值', () => {
+  // 「四、违约责任」这种标题也会命中「违约金/违约责任」，但它不是内容
+  const facts = extractFacts([
+    { sectionTitle: null, articleNo: 9, label: '第九条', text: '四、违约责任' },
+    {
+      sectionTitle: null,
+      articleNo: 10,
+      label: '第十条',
+      text: '乙方提前离职的，应当向甲方支付违约金人民币五万元。',
+    },
+  ])
+  assert.equal(facts.breachText.textValue, '乙方提前离职的，应当向甲方支付违约金人民币五万元。')
+})
+
 test('工作地点取"约定式"写法，不取章节标题（真实合同发现的缺陷）', () => {
   const clauses: ContractClause[] = [
     { sectionTitle: null, articleNo: 2, label: '第二条', text: '工作内容和工作地点1.乙方同意根据甲方工作需要，担任新媒体运营专员岗位工作。' },
@@ -250,9 +264,9 @@ test('工作地点取"约定式"写法，不取章节标题（真实合同发现
 
   // 章节标题里也有「工作地点」四个字，按出现顺序取会把标题连同正文摘出来。
   // 值是合同原句（含列表序号），报告里要能对着合同找到这一句
-  assert.equal(facts.workLocationText.textValue, '4.乙方固定工作地点：江苏省南京市鼓楼区中山北路88号恒基大厦1205室')
+  assert.equal(facts.workLocationText.textValue, '4.乙方固定工作地点：江苏省南京市鼓楼区中山北路88号恒基大厦1205室。')
 
   // 仍然没有约定式写法时，退回通用标签总比报"未提及"好
   const fallback = extractFacts(clause('工作地点另行通知。'))
-  assert.equal(fallback.workLocationText.textValue, '工作地点另行通知')
+  assert.equal(fallback.workLocationText.textValue, '工作地点另行通知。')
 })

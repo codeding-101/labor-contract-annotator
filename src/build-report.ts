@@ -1,5 +1,5 @@
 import type { ContractClause } from './diff-template.ts'
-import { FACT_META, sentenceAround, type FactKey, type FactSet } from './extract-facts.ts'
+import { FACT_META, looksLikeHeading, sentenceAround, type FactKey, type FactSet } from './extract-facts.ts'
 import type { RiskEvidence, RuleEngineResult, StatuteRef, UndeterminedItem } from './rule-engine.ts'
 import type { ContractTemplate, RiskLevel } from './schema.ts'
 
@@ -90,8 +90,9 @@ const KEY_INFO_ITEMS: readonly { label: string; source: KeyInfoSource }[] = [
     source: {
       kind: 'fact',
       factKey: 'payDayOfMonth',
-      // 关键词表要覆盖真实写法。实测被一句「工资支付方式：甲方于每月15日…发放上月工资」打穿过：
-      // 原表只有「发薪/支付日期/发放日期」，这句一个都不含，于是误报「合同未提及」。
+      // 关键词表要覆盖真实写法。实测被两类真实材料打穿过：
+      // 一句「工资支付方式：甲方于每月15日…发放上月工资」一个关键词都不含（原表只有「发薪/支付日期/发放日期」）；
+      // 新就业形态的合同则通篇写「劳动报酬」「结算支付」，根本不出现「工资支付」这四个字。
       mention: [
         '发薪',
         '发放日',
@@ -103,6 +104,12 @@ const KEY_INFO_ITEMS: readonly { label: string; source: KeyInfoSource }[] = [
         '工资支付',
         '发放工资',
         '支付工资',
+        '每月至少',
+        '结算支付',
+        '支付一次',
+        '报酬支付',
+        '支付报酬',
+        '支付劳动报酬',
       ],
     },
   },
@@ -147,27 +154,45 @@ const DISCLAIMERS: readonly string[] = [
  * 没能取出值时，用关键词判断合同里到底有没有相关内容。
  * 注意这里只用于区分「有提及」和「未提及」，**绝不**用它填值——关键词证明不了条款内容是什么。
  *
- * 摘录用**最聚焦的那一句**：把每个关键词的每一次出现都取成一句，选最短的那句。
- * 关键词经常先出现在章节标题里（「保密与竞业限制」「工作内容和工作地点」），
- * 按出现顺序取会把标题连同无关正文摘出来；而"最短的、含该关键词的完整句"通常正是讲这件事的那句。
+ * 摘录的挑法，两条按顺序：
+ * 1. **命中本行关键词最多的那一句**——一句话里同时出现「每月至少」「支付报酬」，
+ *    比只蹭到「报酬支付」四个字的职责描述更可能是在讲发薪；
+ * 2. 同样多时取**最短**的那句，因为关键词经常先出现在章节标题里
+ *    （「工作内容和工作地点」「保密与竞业限制」），那种句子又短又不是内容。
+ * 标题再用 `looksLikeHeading` 排除；过滤后一句都不剩时退回不过滤——
+ * 宁可摘到标题，也不能误报「合同未提及」。
  */
+const MIN_MENTION_LENGTH = 6
+
 function mentionRow(label: string, clauses: ContractClause[], keywords: readonly string[]): KeyInfoRow {
-  let best: string | null = null
+  const candidates: { sentence: string; hits: number }[] = []
 
   for (const clause of clauses) {
     for (const keyword of keywords) {
       let index = clause.text.indexOf(keyword)
       while (index !== -1) {
         const sentence = sentenceAround(clause.text, index, 100)
-        if (sentence.length >= 6 && (best === null || sentence.length < best.length)) best = sentence
+        if (sentence.length >= MIN_MENTION_LENGTH) {
+          candidates.push({ sentence, hits: keywords.filter((word) => sentence.includes(word)).length })
+        }
         index = clause.text.indexOf(keyword, index + keyword.length)
       }
     }
   }
 
-  return best === null
+  const best = (from: readonly { sentence: string; hits: number }[]): string | null =>
+    from.reduce<{ sentence: string; hits: number } | null>((chosen, candidate) => {
+      if (chosen === null) return candidate
+      if (candidate.hits !== chosen.hits) return candidate.hits > chosen.hits ? candidate : chosen
+      return candidate.sentence.length < chosen.sentence.length ? candidate : chosen
+    }, null)?.sentence ?? null
+
+  const evidence =
+    best(candidates.filter((candidate) => !looksLikeHeading(candidate.sentence))) ?? best(candidates)
+
+  return evidence === null
     ? { label, value: null, status: 'NOT_FOUND', evidence: null }
-    : { label, value: null, status: 'MENTIONED', evidence: best }
+    : { label, value: null, status: 'MENTIONED', evidence }
 }
 
 function resolveRow(

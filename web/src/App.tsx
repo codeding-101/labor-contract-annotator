@@ -37,7 +37,7 @@ export function App(): React.ReactElement {
       const extraction = await extractDocument(file)
       if (!extraction.hasTextLayer) {
         setError(
-          `这个文件读不到文字（${extraction.detail}）——可能是扫描件、拍照生成的图片，或加密文档。` +
+          `这个文件读不到文字（${extraction.detail}）——常见于扫描件、拍照生成的图片（Word 里只贴了图片也会这样），或加密文档。` +
             '这种情况本工具暂时无法解析，请改用其他方式提供合同文本（例如从原件复制，或手工录入需要核对的条款）。',
         )
         return

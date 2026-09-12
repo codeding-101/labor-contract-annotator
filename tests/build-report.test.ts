@@ -126,7 +126,7 @@ test('关键信息：每一项都取真值，取不到值时才退回"有提及�
   assert.equal(byLabel('约定月工资')?.value, '8000元')
   // 文本类事实的值就是合同原文片段，比"有提及（未核对内容）"有用
   assert.equal(byLabel('工作地点')?.status, 'TEXT')
-  assert.equal(byLabel('工作地点')?.value, '乙方工作地点为北京市朝阳区')
+  assert.equal(byLabel('工作地点')?.value, '乙方工作地点为北京市朝阳区。')
   // 合同没写的项要显式标出来——"未提及"本身就是一条提示
   assert.equal(byLabel('奖金')?.status, 'NOT_FOUND')
   assert.equal(byLabel('竞业限制期限')?.status, 'NOT_FOUND')
@@ -144,7 +144,14 @@ test('合同有相关字样但取不出值时，摘出原文而不是只写"有�
   const row = resolveKeyInfo(clauses, extractFacts(clauses)).find((item) => item.label === '年休假')
   assert.equal(row?.status, 'MENTIONED')
   // 摘的是含关键词的**那一句**，而不是从条款开头截一段无关的工时制度文字
-  assert.equal(row?.evidence, '乙方依法享有法定节假日、带薪年休假、婚丧假、产假等假期')
+  assert.equal(row?.evidence, '乙方依法享有法定节假日、带薪年休假、婚丧假、产假等假期。')
+})
+
+test('标题是唯一线索时仍报"有提及"，不误报"未提及"', () => {
+  const clauses: ContractClause[] = [{ sectionTitle: null, articleNo: null, label: '第四条', text: '四、违约责任' }]
+  const row = resolveKeyInfo(clauses, extractFacts(clauses)).find((item) => item.label === '违约责任')
+  assert.equal(row?.status, 'MENTIONED')
+  assert.equal(row?.evidence, '四、违约责任')
 })
 
 test('关键词先出现在章节标题里时，摘更聚焦的那一句', () => {
