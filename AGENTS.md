@@ -12,6 +12,7 @@
 - 装依赖：`npm install`
 - 全链路校验：`npm run check`（typecheck → test → 构建法条 → 数据校验）
 - 构建法条：`npm run build:statutes`（从 `sources/` 快照生成 `data/statutes/*.json`）
+- 构建范本：`npm run build:templates`（从 `sources/templates/` 快照生成 `data/templates/*.json`）
 - 数据校验：`npm run validate:data`
 - 单测：`npm test`（Node 内置 `node:test`）
 - 对照各来源条文差异：`npm run diff:sources -- labor-contract-law [条文号]`
@@ -29,7 +30,8 @@
 
 - **法条内容只从官方原文来。** 作者不是法学专业，系统里不允许出现依赖个人法律判断的内容：规则库里每条规则必须绑定真实存在的法条 ID（`statuteRefs`），追溯不到的规则不写。
 - **`sources/` 下是官方页面的冻结快照，不要手改内容。** 要更新就重新抓取并同步哈希与声明。产物的哈希与快照绑定，改了快照不重新构建，`validate:data` 会失败——这是设计如此。
-- **`data/` 不入库**，是构建产物。克隆后跑 `npm run build:statutes` 复现。
+- **`data/` 不入库**，是构建产物。克隆后跑 `npm run build:statutes` 与 `npm run build:templates` 复现。
+- **范本里的待填写位是 `{{FILL}}` 标记**（由 `src/mark-blanks.ts` 从 `<u>` 包住的空白段识别出来）。比对范本与用户合同时，`{{FILL}}` 必须当作通配符，否则用户填好的内容会被误判成"条款被改写"。改动比对逻辑时不要把这个标记当普通文本。
 - 主来源（`role: primary`）抽取必须干净（条号连续、无抽取问题）；交叉来源允许有问题，它存在的意义就是暴露主来源的问题。
 - 抽取器宁可少收不可错收：条号不连续即停止并报错。不要为了让数据"看起来完整"而放宽断言。
 
@@ -42,6 +44,7 @@
 - 中文输出经命令管道时会间歇性乱码。要看真实内容用文件读取工具，不要依赖终端回显。
 - 本机 `core.autocrlf=true`。**凡是内容哈希参与校验的文件，必须在 `.gitattributes` 里标 `-text`**，否则克隆后换行符变化会让哈希失效。`sources/**` 已这样处理，不要删。
 - Node v24.19.0（原生跑 TS）、TypeScript v7、npm 11。
+- 官方劳动合同范本普遍是 **Word 97-2003 二进制 `.doc`**（不是 `.docx`、也不在网页正文里）。读取用 `word-extractor`（纯 JS，不依赖本机装 Word 或 LibreOffice），封装在 `src/read-doc.ts`。但它对段落边界的还原不可靠，接入 `.doc` 来源前要先验证段落边界。`.docx` 需要另加读取器（mammoth），尚未接。
 - `web_search` 工具当前报错不可用；`web_fetch` 可用（用 `cn.bing.com`，`www.bing.com` 会跨域重定向）。抓官方页面用 `Invoke-WebRequest -OutFile` 直接落字节最可靠。
 - `flk.npc.gov.cn`（国家法律法规数据库）是 SPA，`/api/detail` 取不到数据。法条来源目前靠政府网站静态页。
 - 浏览器验证：playwright MCP 已配好。**改界面必须真的在浏览器里走一遍**，不要只看构建是否通过。

@@ -1,0 +1,19 @@
+{
+  "$comment": "人工维护的范本来源声明。sources/templates/ 下是官方页面或附件的冻结快照。format 说明正文容器：html 走 markBlanks + htmlToBlocks，doc 走 word-extractor。",
+  "templates": {
+    "liangzihu-420702": {
+      "name": "劳动合同（通用）",
+      "regionCode": "420702",
+      "regionName": "湖北省鄂州市梁子湖区",
+      "version": "2021",
+      "format": "html",
+      "file": "liangzihu/labor-contract-general.html",
+      "url": "https://www.liangzh.gov.cn/lzhxxgk/xxgkml/gysyjs/wgjy/202201/t20220111_452006.html",
+      "publisher": "梁子湖区人力资源和社会保障局",
+      "publisherVerified": true,
+      "publishDate": "2021-05-10",
+      "retrievedAt": "2026-09-12",
+      "note": "页面标题为「劳动合同（通用版）下载」，正文以 HTML 内联发布（非附件），故无需 Word 解析。已知源页面排版瑕疵：第三节工时制度处正文里混入一个孤立的「方」字（源自原始 Word 排版），未做清理，保持与来源一致。"
+    }
+  }
+}

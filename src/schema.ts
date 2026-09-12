@@ -98,26 +98,65 @@ export const RiskRuleSetSchema = z.object({
   rules: z.array(RiskRuleSchema),
 })
 
-export const TemplateClauseSchema = z.object({
+/** 范本来源声明。 */
+export const DeclaredTemplateSchema = z.object({
+  name: z.string().min(2),
+  /** 行政区划代码，6 位。范本按地区选取，比对时需要知道用哪一份。 */
+  regionCode: z.string().regex(/^\d{6}$/, '行政区划代码为 6 位数字'),
+  regionName: z.string().min(1),
+  version: z.string().min(1),
+  /** 正文的容器格式。docx 尚未支持（需要单独的读取器）。 */
+  format: z.enum(['html', 'doc']),
+  file: z.string().min(1),
+  url: urlString,
+  publisher: z.string().min(1),
+  publisherVerified: z.boolean(),
+  publishDate: isoDate,
+  retrievedAt: isoDate,
+  note: z.string().optional(),
+})
+
+export const TemplatesFileSchema = z.object({
+  templates: z.record(z.string(), DeclaredTemplateSchema),
+})
+
+export const TemplateProvenanceSchema = DeclaredTemplateSchema.extend({
+  sha256: sha256Hex,
+  issues: z.array(z.string()),
+})
+
+export const TemplateArticleSchema = z.object({
+  articleNo: z.number().int().positive(),
+  articleLabel: z.string().min(2),
+  /** 条文正文。范本里的待填写位被替换为 mark-blanks 定义的 FILL 标记，比对时视为通配符。 */
+  text: z.string().min(1),
+})
+
+export const TemplateSectionSchema = z.object({
   sectionNo: z.string().min(1),
   sectionTitle: z.string().min(1),
-  clauseText: z.string().min(1),
-  /** 是否为法定必备条款：范本比对据此把「范本有合同没有」判为严重风险。 */
-  isMandatory: z.boolean(),
-  linkedRuleCodes: z.array(z.string()),
+  articles: z.array(TemplateArticleSchema).min(1),
 })
 
 export const ContractTemplateSchema = z.object({
-  regionCode: z.string().regex(/^\d{6}$/, '行政区划代码为 6 位数字'),
-  regionName: z.string().min(1),
   templateId: z.string().min(1),
-  version: z.string().min(1),
-  sourceUrl: urlString,
-  sourceOrg: z.string().min(1),
-  publishDate: isoDate,
-  effectiveFrom: z.string().nullable(),
-  effectiveTo: z.string().nullable(),
-  clauses: z.array(TemplateClauseSchema).min(1),
+  name: z.string().min(2),
+  regionCode: z.string().regex(/^\d{6}$/),
+  regionName: z.string().min(1),
+  /** 正文之前的块：标题、注意事项、甲乙双方信息栏、序言。原样保留，便于审计。 */
+  frontMatter: z.array(z.string()),
+  notes: z.array(z.string()),
+  sections: z.array(TemplateSectionSchema).min(1),
+  /** 签署栏之后的块：附件与页脚。 */
+  trailing: z.array(z.string()),
+  provenance: z.object({
+    generatedAt: z.string(),
+    generator: z.string(),
+    source: TemplateProvenanceSchema,
+    sectionCount: z.number().int().positive(),
+    articleCount: z.number().int().positive(),
+    fillMarker: z.string().min(1),
+  }),
 })
 
 export type DeclaredSource = z.infer<typeof DeclaredSourceSchema>
@@ -128,3 +167,6 @@ export type Statute = z.infer<typeof StatuteSchema>
 export type RiskRule = z.infer<typeof RiskRuleSchema>
 export type RiskRuleSet = z.infer<typeof RiskRuleSetSchema>
 export type ContractTemplate = z.infer<typeof ContractTemplateSchema>
+export type DeclaredTemplate = z.infer<typeof DeclaredTemplateSchema>
+export type TemplatesFile = z.infer<typeof TemplatesFileSchema>
+export type TemplateSection = z.infer<typeof TemplateSectionSchema>
