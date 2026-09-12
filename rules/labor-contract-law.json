@@ -190,6 +190,126 @@
           "expect": "OK"
         }
       ]
+    },
+    {
+      "code": "PROBATION_TOO_LONG",
+      "title": "试用期超过法定期限",
+      "level": "red",
+      "category": "试用期",
+      "checkType": "TIERED_COMPARE",
+      "params": {
+        "field": "probationMonths",
+        "operator": ">",
+        "dependsOn": "contractTermMonths",
+        "steps": [
+          { "whenAtLeast": 36, "limit": 6 },
+          { "whenAtLeast": 12, "limit": 2 },
+          { "whenAtLeast": 3, "limit": 1 },
+          { "whenAtLeast": 0, "limit": 0 }
+        ]
+      },
+      "statuteRefs": ["LCL-19"],
+      "explanation": "试用期长短受合同期限约束：合同期限三个月以上不满一年的，试用期不得超过一个月；一年以上不满三年的，不得超过二个月；三年以上固定期限和无固定期限的，不得超过六个月。合同期限不满三个月的，不得约定试用期。同一用人单位与同一劳动者也只能约定一次试用期。",
+      "suggestion": "要求把试用期缩短到法定期限以内。超期部分已经履行的，可以主张按试用期满后的月工资标准支付赔偿金。",
+      "enabled": true,
+      "cases": [
+        {
+          "facts": { "contractTermMonths": 36, "probationMonths": 9 },
+          "expect": "VIOLATION",
+          "note": "三年期合同试用期上限 6 个月"
+        },
+        {
+          "facts": { "contractTermMonths": 36, "probationMonths": 6 },
+          "expect": "OK",
+          "note": "正好等于上限，不算超期"
+        },
+        {
+          "facts": { "contractTermMonths": 12, "probationMonths": 3 },
+          "expect": "VIOLATION",
+          "note": "一年以上不满三年，上限 2 个月"
+        },
+        {
+          "facts": { "contractTermMonths": 2, "probationMonths": 1 },
+          "expect": "VIOLATION",
+          "note": "期限不满三个月不得约定试用期"
+        },
+        {
+          "facts": { "contractTermMonths": null, "probationMonths": 3 },
+          "expect": "UNDETERMINED",
+          "note": "合同期限没抽出来，不能判合规也不能判违规"
+        }
+      ]
+    },
+    {
+      "code": "PROBATION_WAGE_TOO_LOW",
+      "title": "试用期工资低于约定工资的 80%",
+      "level": "red",
+      "category": "试用期",
+      "checkType": "RATIO_COMPARE",
+      "params": {
+        "field": "probationMonthlyWage",
+        "operator": "<",
+        "ratioOf": "monthlyWage",
+        "ratio": 0.8
+      },
+      "statuteRefs": ["LCL-20"],
+      "explanation": "劳动者在试用期的工资不得低于本单位相同岗位最低档工资或者劳动合同约定工资的百分之八十。此外还不得低于用人单位所在地的最低工资标准——后一项需要地区最低工资数据，本工具尚未覆盖。",
+      "suggestion": "要求按不低于合同约定工资的 80% 补足试用期工资，并可要求补发已发放月份的差额。",
+      "enabled": true,
+      "cases": [
+        {
+          "facts": { "probationMonthlyWage": 5000, "monthlyWage": 8000 },
+          "expect": "VIOLATION",
+          "note": "8000 × 0.8 = 6400，5000 低于它"
+        },
+        {
+          "facts": { "probationMonthlyWage": 6400, "monthlyWage": 8000 },
+          "expect": "OK",
+          "note": "正好等于 80%，不算低于"
+        },
+        {
+          "facts": { "probationMonthlyWage": null, "monthlyWage": 8000 },
+          "expect": "UNDETERMINED",
+          "note": "试用期工资没抽出来"
+        }
+      ]
+    },
+    {
+      "code": "NON_COMPETE_TOO_LONG",
+      "title": "竞业限制期限超过两年",
+      "level": "yellow",
+      "category": "竞业限制",
+      "checkType": "NUMERIC_COMPARE",
+      "params": {
+        "field": "nonCompeteMonths",
+        "operator": ">",
+        "value": 24
+      },
+      "statuteRefs": ["LCL-24"],
+      "explanation": "竞业限制的期限不得超过二年。另外竞业限制期间用人单位应当按月给予经济补偿，这一点需要单独核对合同是否写明。",
+      "suggestion": "要求把竞业限制期限改到两年以内，并确认合同写明了竞业限制期间的按月经济补偿。",
+      "enabled": true,
+      "cases": [
+        {
+          "facts": { "nonCompeteMonths": 36 },
+          "expect": "VIOLATION"
+        },
+        {
+          "facts": { "nonCompeteMonths": 24 },
+          "expect": "OK",
+          "note": "正好两年，合法"
+        },
+        {
+          "facts": { "nonCompeteMonths": null },
+          "expect": "UNDETERMINED",
+          "note": "合同没约定竞业限制，也就无从判定"
+        },
+        {
+          "texts": ["双方约定：乙方离职后二年内不得从事同类业务。", "竞业限制期限为三年，自离职之日起计算。"],
+          "expect": "VIOLATION",
+          "note": "走完整链路：先从条款抽事实，再判定（取条款里写明的三年）"
+        }
+      ]
     }
   ]
 }

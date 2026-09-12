@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { diffAgainstTemplate, flattenTemplate, type ContractClause, type DiffKind, type TemplateClause } from './diff-template.ts'
+import { extractFacts, FACT_META, type FactKey } from './extract-facts.ts'
 import { fillBlanks } from './fill-template.ts'
 import { ContractTemplateSchema } from './schema.ts'
 
@@ -117,11 +118,28 @@ function main(): number {
 
   let total = 0
   let passed = 0
+  const problems: string[] = []
 
   for (const file of files) {
     const template = ContractTemplateSchema.parse(JSON.parse(readFileSync(join(DATA_DIR, file), 'utf8')))
     const templateClauses = flattenTemplate(template)
     console.log(`\n=== 比对引擎评测：${template.name}（${file}，范本 ${templateClauses.length} 条）===`)
+
+    // 顺手确认事实抽取在**真实范本数据**上能跑通，而不是只在我手写的测试夹具上。
+    // 这里不校验具体数值（范本会更新），只要求：该抽出来的不能是"未识别"。
+    const sampleContract = contractFrom(templateClauses, true)
+    const sampleFacts = extractFacts(sampleContract)
+    const factKeys: FactKey[] = ['contractTermMonths', 'probationMonths', 'monthlyWage', 'probationMonthlyWage']
+    console.log(
+      `  事实抽取（示例合同）：${factKeys
+        .map((key) => `${FACT_META[key].label}=${sampleFacts[key].value ?? `未识别（${sampleFacts[key].reason ?? ''}）`}`)
+        .join('  ')}`,
+    )
+    for (const key of factKeys) {
+      if (sampleFacts[key].value === null) {
+        problems.push(`${file}: 真实范本数据上没能抽出「${FACT_META[key].label}」`)
+      }
+    }
 
     for (const evalCase of buildCases(templateClauses)) {
       total += 1
@@ -156,7 +174,11 @@ function main(): number {
   }
 
   console.log(`\n评测通过 ${passed}/${total}`)
-  return passed === total ? 0 : 1
+  if (problems.length > 0) {
+    console.log('\n=== 其他问题 ===')
+    for (const problem of problems) console.log(`  ✗ ${problem}`)
+  }
+  return passed === total && problems.length === 0 ? 0 : 1
 }
 
 process.exitCode = main()

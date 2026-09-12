@@ -1,5 +1,6 @@
 import type { ContractClause } from './diff-template.ts'
-import type { RiskLevel, RiskRule } from './schema.ts'
+import { FACT_META, type Fact, type FactKey } from './extract-facts.ts'
+import type { ComparisonOperator, RiskLevel, RiskRule } from './schema.ts'
 
 /** 报告里要展示的法条原文。一律从法条库按 ID 取，规则里不复制条文。 */
 export type StatuteRef = {
@@ -26,14 +27,21 @@ export type RiskFinding = {
   suggestion: string
   statutes: StatuteRef[]
   evidence: RiskEvidence
-  /** 命中但需要人工确认时给出提示，例如条款本身是否定表述。 */
+  /** 命中的依据说明，例如"合同期限 36 个月 → 法定上限 6 个月；实际约定 9 个月"。 */
   note?: string
+}
+
+/** 抽不到事实时的结果：既不是违规，也不是合规。 */
+export type UndeterminedItem = {
+  ruleCode: string
+  title: string
+  level: RiskLevel
+  reason: string
 }
 
 export type RuleEngineResult = {
   findings: RiskFinding[]
-  /** 遇到引擎尚未实现的判定方式时记录在这里，绝不静默跳过。 */
-  unsupported: string[]
+  undetermined: UndeterminedItem[]
 }
 
 /**
@@ -57,26 +65,50 @@ function matchesPattern(text: string, params: { include: string[]; exclude?: str
   return !(params.exclude ?? []).some((keyword) => text.includes(keyword))
 }
 
+function compare(left: number, operator: ComparisonOperator, right: number): boolean {
+  if (operator === '<') return left < right
+  if (operator === '<=') return left <= right
+  if (operator === '>') return left > right
+  if (operator === '>=') return left >= right
+  if (operator === '==') return left === right
+  return left !== right
+}
+
+function describe(facts: Record<FactKey, Fact> | Partial<Record<FactKey, Fact>>, key: FactKey): string {
+  const fact = facts[key]
+  const meta = FACT_META[key]
+  if (fact === undefined || fact.value === null) return `${meta.label} 未识别`
+  return `${meta.label} ${fact.value}${meta.unit}`
+}
+
+function evidenceFromFact(fact: Fact, fallback: string): RiskEvidence {
+  if (fact.evidence !== null) return fact.evidence
+  return { clauseLabel: null, text: fallback }
+}
+
 /**
- * 在合同条款上跑规则库，产出风险项。
+ * 在合同条款上跑规则库，产出风险项与"无法判定"项。
  *
  * 设计要点：
  * - 只做确定性判定，能解释、能写单测、零推理成本。
  * - 法条原文由 lookup 从法条库取，规则只给 ID；取不到就抛错，不放过没有依据的风险项。
- * - 尚未实现的判定方式记进 unsupported 并继续，不静默跳过。
+ * - **抽不到事实时产出 undetermined，不当作合规也不当作违规**——这条是抽取值不出错的前提。
+ * - 判定方式由 TypeScript 穷尽性检查兜底：新增 checkType 时这里会直接编译失败，不会静默漏掉。
  */
 export function evaluateRules(
   rules: RiskRule[],
   clauses: ContractClause[],
   lookup: StatuteLookup,
+  facts: Partial<Record<FactKey, Fact>> = {},
 ): RuleEngineResult {
   const findings: RiskFinding[] = []
-  const unsupported: string[] = []
+  const undetermined: UndeterminedItem[] = []
 
   for (const rule of rules) {
     if (!rule.enabled) continue
 
     let evidence: RiskEvidence | null = null
+    let note: string | undefined
 
     if (rule.checkType === 'PATTERN_MATCH') {
       for (const clause of clauses) {
@@ -85,16 +117,84 @@ export function evaluateRules(
           break
         }
       }
+      if (evidence !== null) note = negationNote(evidence.text)
     } else if (rule.checkType === 'EXISTENCE') {
       const hit = clauses.find((clause) => rule.params.keywords.some((keyword) => clause.text.includes(keyword)))
       if (rule.params.mode === 'MISSING_ANY' && hit === undefined) {
         evidence = { clauseLabel: null, text: '合同中未找到相关条款' }
       } else if (rule.params.mode === 'PRESENT_ANY' && hit !== undefined) {
         evidence = { clauseLabel: hit.label, text: hit.text }
+        note = negationNote(hit.text)
+      }
+    } else if (rule.checkType === 'NUMERIC_COMPARE') {
+      const fact = facts[rule.params.field]
+      if (fact === undefined || fact.value === null) {
+        undetermined.push({
+          ruleCode: rule.code,
+          title: rule.title,
+          level: rule.level,
+          reason: fact?.reason ?? `${FACT_META[rule.params.field].label}未识别`,
+        })
+        continue
+      }
+      if (compare(fact.value, rule.params.operator, rule.params.value)) {
+        evidence = evidenceFromFact(fact, describe(facts, rule.params.field))
+        note = `实际${describe(facts, rule.params.field)}，判定线为 ${rule.params.operator} ${rule.params.value}`
+      }
+    } else if (rule.checkType === 'RATIO_COMPARE') {
+      const measured = facts[rule.params.field]
+      const base = facts[rule.params.ratioOf]
+      if (measured === undefined || measured.value === null || base === undefined || base.value === null) {
+        undetermined.push({
+          ruleCode: rule.code,
+          title: rule.title,
+          level: rule.level,
+          reason:
+            measured?.reason ??
+            base?.reason ??
+            `缺少${FACT_META[rule.params.field].label}或${FACT_META[rule.params.ratioOf].label}`,
+        })
+        continue
+      }
+      const threshold = base.value * rule.params.ratio
+      if (compare(measured.value, rule.params.operator, threshold)) {
+        evidence = evidenceFromFact(measured, describe(facts, rule.params.field))
+        note = `${describe(facts, rule.params.ratioOf)} × ${rule.params.ratio} = ${threshold.toFixed(2)}${FACT_META[rule.params.field].unit}，实际${describe(facts, rule.params.field)}`
+      }
+    } else if (rule.checkType === 'TIERED_COMPARE') {
+      const measured = facts[rule.params.field]
+      const depender = facts[rule.params.dependsOn]
+      if (measured === undefined || measured.value === null || depender === undefined || depender.value === null) {
+        undetermined.push({
+          ruleCode: rule.code,
+          title: rule.title,
+          level: rule.level,
+          reason:
+            measured?.reason ??
+            depender?.reason ??
+            `缺少${FACT_META[rule.params.field].label}或${FACT_META[rule.params.dependsOn].label}`,
+        })
+        continue
+      }
+      const dependerValue = depender.value
+      const step = rule.params.steps.find((candidate) => dependerValue >= candidate.whenAtLeast)
+      if (step === undefined) {
+        undetermined.push({
+          ruleCode: rule.code,
+          title: rule.title,
+          level: rule.level,
+          reason: `${describe(facts, rule.params.dependsOn)} 低于分档表的最小档，分档表可能不完整`,
+        })
+        continue
+      }
+      if (compare(measured.value, rule.params.operator, step.limit)) {
+        evidence = evidenceFromFact(measured, describe(facts, rule.params.field))
+        note = `${describe(facts, rule.params.dependsOn)} → 法定上限 ${step.limit}${FACT_META[rule.params.field].unit}；实际约定 ${measured.value}${FACT_META[rule.params.field].unit}`
       }
     } else {
-      unsupported.push(`${rule.code}：判定方式 ${rule.checkType} 尚未实现`)
-      continue
+      // 穷尽性检查：manifest 里新增判定方式时，这一行会直接编译失败，逼你实现它。
+      const exhaustive: never = rule
+      throw new Error(`判定方式未实现：${JSON.stringify(exhaustive)}`)
     }
 
     if (evidence === null) continue
@@ -117,9 +217,9 @@ export function evaluateRules(
       suggestion: rule.suggestion,
       statutes,
       evidence,
-      note: negationNote(evidence.text),
+      ...(note === undefined ? {} : { note }),
     })
   }
 
-  return { findings, unsupported }
+  return { findings, undetermined }
 }

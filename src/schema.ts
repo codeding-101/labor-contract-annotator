@@ -76,9 +76,33 @@ export const StatuteSchema = z.object({
 })
 
 /** 规则判定方式。引擎只实现这几种确定性算子，规则库可以无限扩而代码不外扩。 */
-export const CheckTypeSchema = z.enum(['NUMERIC_COMPARE', 'EXISTENCE', 'PATTERN_MATCH', 'ENUM_MATCH'])
+export const CheckTypeSchema = z.enum([
+  'PATTERN_MATCH',
+  'EXISTENCE',
+  'NUMERIC_COMPARE',
+  'RATIO_COMPARE',
+  'TIERED_COMPARE',
+])
 
 export const RiskLevelSchema = z.enum(['red', 'yellow', 'blue'])
+
+/**
+ * 需要从合同抽取的事实键（定义在这里，是因为它同时被 schema 引用与规则库引用）。
+ * 数值类规则的 `field` / `ratioOf` / `dependsOn` 只能取这些值，写错键名会被 schema 拦下。
+ */
+export const FACT_KEYS = [
+  'contractTermMonths',
+  'probationMonths',
+  'monthlyWage',
+  'probationMonthlyWage',
+  'nonCompeteMonths',
+] as const
+
+export const FactKeySchema = z.enum(FACT_KEYS)
+export type FactKey = z.infer<typeof FactKeySchema>
+
+export const ComparisonOperatorSchema = z.enum(['<', '<=', '>', '>=', '==', '!='])
+export type ComparisonOperator = z.infer<typeof ComparisonOperatorSchema>
 
 /** 关键词命中即判定。exclude 用于排除同一条款里的例外情形（如"竞业限制的违约金"是合法的）。 */
 export const PatternParamsSchema = z.object({
@@ -96,19 +120,50 @@ export const ExistenceParamsSchema = z.object({
   keywords: z.array(z.string().min(1)).min(1),
 })
 
-/** 数值比较。需要先从合同抽出事实（如合同期限、试用期长度），尚未实现。 */
+/** 直接与固定值比较，例如竞业限制期限 > 24 个月。 */
 export const NumericParamsSchema = z.object({
-  field: z.string().min(1),
-  operator: z.enum(['<', '<=', '>', '>=', '==', '!=']),
+  field: FactKeySchema,
+  operator: ComparisonOperatorSchema,
   value: z.number(),
 })
 
-/** 规则自带正反例：改规则必须同时改用例，否则测试会失败。 */
-export const RuleCaseSchema = z.object({
-  text: z.string().min(2),
-  expect: z.enum(['VIOLATION', 'OK']),
-  note: z.string().optional(),
+/** 与另一个事实的比例比较，例如试用期工资 < 月工资 × 0.8。 */
+export const RatioParamsSchema = z.object({
+  field: FactKeySchema,
+  operator: ComparisonOperatorSchema,
+  ratioOf: FactKeySchema,
+  ratio: z.number(),
 })
+
+/**
+ * 分档比较：上限取决于另一个事实，例如法定试用期上限随合同期限变化
+ * （3 个月以上不满 1 年→1 个月；1 年以上不满 3 年→2 个月；3 年以上→6 个月）。
+ * steps 必须按 whenAtLeast 从大到小排列，取第一个满足 dependsOn >= whenAtLeast 的档。
+ */
+export const TieredParamsSchema = z.object({
+  field: FactKeySchema,
+  operator: ComparisonOperatorSchema,
+  dependsOn: FactKeySchema,
+  steps: z.array(z.object({ whenAtLeast: z.number(), limit: z.number() })).min(1),
+})
+
+/**
+ * 规则自带正反例：改规则必须同时改用例，否则测试会失败。
+ * - `text` 是单条条款；数值类规则需要多条条款时用 `texts`。两者都可给，会拼在一起。
+ * - `facts` 直接指定事实，用于只测比较逻辑；不给则从条款文本抽取（走完整链路）。
+ * - `UNDETERMINED` 表示"抽不到事实，无法判定"——这是合法结果，不等于合规。
+ */
+export const RuleCaseSchema = z
+  .object({
+    text: z.string().min(2).optional(),
+    texts: z.array(z.string().min(2)).min(1).optional(),
+    facts: z.record(z.string(), z.union([z.number(), z.null()])).optional(),
+    expect: z.enum(['VIOLATION', 'OK', 'UNDETERMINED']),
+    note: z.string().optional(),
+  })
+  .refine((value) => value.text !== undefined || value.texts !== undefined || value.facts !== undefined, {
+    message: '用例至少要有 text、texts 或 facts 之一',
+  })
 
 const RiskRuleBase = z.object({
   code: z.string().regex(/^[A-Z][A-Z0-9_]*$/, '规则 code 必须是大写下划线形式'),
@@ -133,6 +188,8 @@ export const RiskRuleSchema = z.discriminatedUnion('checkType', [
   RiskRuleBase.extend({ checkType: z.literal('PATTERN_MATCH'), params: PatternParamsSchema }),
   RiskRuleBase.extend({ checkType: z.literal('EXISTENCE'), params: ExistenceParamsSchema }),
   RiskRuleBase.extend({ checkType: z.literal('NUMERIC_COMPARE'), params: NumericParamsSchema }),
+  RiskRuleBase.extend({ checkType: z.literal('RATIO_COMPARE'), params: RatioParamsSchema }),
+  RiskRuleBase.extend({ checkType: z.literal('TIERED_COMPARE'), params: TieredParamsSchema }),
 ])
 
 export const RiskRuleSetSchema = z.object({

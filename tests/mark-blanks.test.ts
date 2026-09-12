@@ -24,3 +24,9 @@ test('同一段里的多个填空位各自标记', () => {
   const html = '<p>自<u>&nbsp;&nbsp;</u>年<u>&nbsp;&nbsp;</u>月</p>'
   assert.equal(markBlanks(html), `<p>自${FILL}年${FILL}月</p>`)
 })
+
+test('相邻的填空位合并成一个标记', () => {
+  // Word 常把一条下划线拆成多个 run；不合并的话填充后会得到「示例示例2026年」，日期就匹配不上了
+  const html = `<p>自<u>&nbsp;&nbsp;</u><u>&nbsp;&nbsp;</u><u>&nbsp;&nbsp;</u>年</p>`
+  assert.equal(markBlanks(html), `<p>自${FILL}年</p>`)
+})

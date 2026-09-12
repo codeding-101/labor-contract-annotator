@@ -3,40 +3,67 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import type { ContractClause } from '../src/diff-template.ts'
+import { extractFacts, type FactKey } from '../src/extract-facts.ts'
 import { evaluateRules, type StatuteLookup } from '../src/rule-engine.ts'
-import { RiskRuleSchema, RiskRuleSetSchema } from '../src/schema.ts'
+import { RiskRuleSetSchema, type RiskRule } from '../src/schema.ts'
 
 const RULES_FILE = join(import.meta.dirname, '..', 'rules', 'labor-contract-law.json')
 const ruleSet = RiskRuleSetSchema.parse(JSON.parse(readFileSync(RULES_FILE, 'utf8')))
 
 const lookup: StatuteLookup = (id) => ({ id, lawName: '测试法', articleLabel: id, text: `条文原文 ${id}` })
 
-function clauseFrom(text: string): ContractClause[] {
-  return [{ sectionTitle: null, articleNo: null, label: '测试条款', text }]
+function clausesOf(text: string | undefined, texts: string[] | undefined): ContractClause[] {
+  const all = [...(text === undefined ? [] : [text]), ...(texts ?? [])]
+  return all.map((value, index) => ({ sectionTitle: null, articleNo: null, label: `条款${index + 1}`, text: value }))
+}
+
+/**
+ * 用例的评法：条款 → 抽事实 → 跑规则。
+ * 用例若直接给了 facts，则用它覆盖抽取结果——这样可以只测比较逻辑，
+ * 而不用为了造出某个数值去编一段合同文本。
+ */
+function runCase(rule: RiskRule, ruleCase: (typeof ruleSet.rules)[number]['cases'][number]) {
+  const clauses = clausesOf(ruleCase.text, ruleCase.texts)
+  const facts = { ...extractFacts(clauses) }
+  for (const [key, value] of Object.entries(ruleCase.facts ?? {})) {
+    const factKey = key as FactKey
+    facts[factKey] = { key: factKey, value, unit: null, evidence: null, method: 'EXPLICIT' }
+  }
+  return evaluateRules([rule], clauses, lookup, facts)
+}
+
+function ruleByCode(code: string): RiskRule {
+  const rule = ruleSet.rules.find((candidate) => candidate.code === code)
+  assert.ok(rule !== undefined, `规则库里找不到 ${code}`)
+  return rule
 }
 
 test('每条规则自带的正反例都能判对', () => {
   let checked = 0
   for (const rule of ruleSet.rules) {
     for (const ruleCase of rule.cases) {
-      const { findings } = evaluateRules([rule], clauseFrom(ruleCase.text), lookup)
-      const fired = findings.some((finding) => finding.ruleCode === rule.code)
+      const result = runCase(rule, ruleCase)
+      const fired = result.findings.some((finding) => finding.ruleCode === rule.code)
+      const undetermined = result.undetermined.some((item) => item.ruleCode === rule.code)
+      const actual = fired ? 'VIOLATION' : undetermined ? 'UNDETERMINED' : 'OK'
       assert.equal(
-        fired,
-        ruleCase.expect === 'VIOLATION',
-        `规则 ${rule.code} 期望 ${ruleCase.expect}，实际${fired ? '命中' : '未命中'} —— ${ruleCase.text}`,
+        actual,
+        ruleCase.expect,
+        `规则 ${rule.code} 期望 ${ruleCase.expect}、实际 ${actual}${ruleCase.note === undefined ? '' : `（${ruleCase.note}）`}`,
       )
       checked += 1
     }
   }
-  assert.ok(checked >= 12, `用例太少，只跑了 ${checked} 条`)
+  assert.ok(checked >= 20, `用例太少，只跑了 ${checked} 条`)
 })
 
 test('风险项里的法条原文来自 lookup，规则里不复制条文', () => {
-  const rule = ruleSet.rules[0]
-  assert.ok(rule !== undefined)
-  const { findings } = evaluateRules([rule], clauseFrom('乙方提前离职应支付违约金三万元。'), lookup)
-  const finding = findings[0]
+  const rule = ruleByCode('UNLAWFUL_LIQUIDATED_DAMAGES')
+  const result = runCase(rule, {
+    text: '乙方在合同期内提前离职的，应当向甲方支付违约金人民币三万元。',
+    expect: 'VIOLATION',
+  })
+  const finding = result.findings[0]
   assert.ok(finding !== undefined)
   assert.deepEqual(
     finding.statutes.map((statute) => statute.text),
@@ -45,10 +72,9 @@ test('风险项里的法条原文来自 lookup，规则里不复制条文', () =
 })
 
 test('法条 ID 取不到时抛错，不放过没有依据的风险项', () => {
-  const rule = ruleSet.rules[0]
-  assert.ok(rule !== undefined)
+  const rule = ruleByCode('UNLAWFUL_LIQUIDATED_DAMAGES')
   assert.throws(
-    () => evaluateRules([rule], clauseFrom('乙方提前离职应支付违约金三万元。'), () => null),
+    () => evaluateRules([rule], clausesOf('乙方提前离职应支付违约金三万元。', undefined), () => null),
     /引用了法条库里不存在的 ID/,
   )
 })
@@ -56,55 +82,50 @@ test('法条 ID 取不到时抛错，不放过没有依据的风险项', () => {
 test('含否定表述的命中不被抑制，但带人工确认提示', () => {
   // 取舍：漏报比误报严重。含「不得」的条款也可能是真违法条款
   //（如"乙方不得提前离职，否则支付违约金"），所以报出来加提示，而不是用否定词直接放过。
-  const rule = ruleSet.rules.find((candidate) => candidate.code === 'DETAIN_ID_OR_COLLECT_FEES')
-  assert.ok(rule !== undefined)
-  const { findings } = evaluateRules([rule], clauseFrom('甲方不得扣押乙方居民身份证。'), lookup)
-  const finding = findings[0]
+  const rule = ruleByCode('DETAIN_ID_OR_COLLECT_FEES')
+  const result = runCase(rule, { text: '甲方不得扣押乙方居民身份证。', expect: 'VIOLATION' })
+  const finding = result.findings[0]
   assert.ok(finding !== undefined, '不应抑制命中')
   assert.match(finding.note ?? '', /否定表述/)
 })
 
-test('尚未实现的判定方式记进 unsupported，不静默跳过', () => {
-  const numericRule = RiskRuleSchema.parse({
-    code: 'PROBATION_TOO_LONG',
-    title: '试用期超过法定期限',
-    level: 'red',
-    category: '试用期',
-    checkType: 'NUMERIC_COMPARE',
-    params: { field: 'probationMonths', operator: '>', value: 6 },
-    statuteRefs: ['LCL-19'],
-    explanation: '试用期长度受劳动合同期限约束。',
-    suggestion: '要求缩短试用期。',
-    enabled: true,
-    cases: [
-      { text: '试用期六个月', expect: 'VIOLATION' },
-      { text: '试用期三个月', expect: 'OK' },
-    ],
-  })
+test('抽不到事实时产出 undetermined，既不算合规也不算违规', () => {
+  const rule = ruleByCode('PROBATION_TOO_LONG')
+  // 合同里只写了试用期，没写合同期限 → 分档比较缺一个输入
+  const result = runCase(rule, { text: '双方约定试用期三个月。', expect: 'UNDETERMINED' })
+  assert.equal(result.findings.length, 0, '不应当判成违规')
+  const item = result.undetermined[0]
+  assert.ok(item !== undefined)
+  assert.match(item.reason, /合同期限/)
+})
 
-  const { findings, unsupported } = evaluateRules([numericRule], clauseFrom('试用期六个月。'), lookup)
-  assert.equal(findings.length, 0)
-  assert.match(unsupported[0] ?? '', /NUMERIC_COMPARE/)
+test('数值判定走完整链路：从条款抽事实再判定', () => {
+  const clauses = clausesOf(undefined, [
+    '本合同为固定期限劳动合同，合同期限三年，自2026年7月1日起至2029年7月1日止。',
+    '双方约定试用期六个月。',
+  ])
+  const facts = extractFacts(clauses)
+  assert.equal(facts.contractTermMonths.value, 36)
+  assert.equal(facts.probationMonths.value, 6)
+
+  // 36 个月 → 法定上限 6 个月，正好 6 个月不超期
+  const ok = evaluateRules([ruleByCode('PROBATION_TOO_LONG')], clauses, lookup, facts)
+  assert.equal(ok.findings.length, 0)
+
+  // 同样条款下试用期写 9 个月 → 超期，且说明里要写出上下限依据
+  const longer = clausesOf(undefined, [
+    '本合同为固定期限劳动合同，合同期限三年，自2026年7月1日起至2029年7月1日止。',
+    '双方约定试用期九个月。',
+  ])
+  const violation = evaluateRules([ruleByCode('PROBATION_TOO_LONG')], longer, lookup, extractFacts(longer))
+  const finding = violation.findings[0]
+  assert.ok(finding !== undefined)
+  assert.match(finding.note ?? '', /法定上限 6/)
+  assert.match(finding.note ?? '', /实际约定 9/)
 })
 
 test('停用的规则不参与判定', () => {
-  const disabled = RiskRuleSchema.parse({
-    code: 'DISABLED_SAMPLE',
-    title: '停用的示例规则',
-    level: 'blue',
-    category: '示例',
-    checkType: 'PATTERN_MATCH',
-    params: { include: ['违约金'] },
-    statuteRefs: ['LCL-25'],
-    explanation: '仅用于测试停用行为。',
-    suggestion: '这条规则用于测试停用规则不参与判定，无需给出建议。',
-    enabled: false,
-    cases: [
-      { text: '应当支付违约金', expect: 'VIOLATION' },
-      { text: '无需支付违约金', expect: 'VIOLATION' },
-    ],
-  })
-
-  const { findings } = evaluateRules([disabled], clauseFrom('乙方提前离职应支付违约金三万元。'), lookup)
-  assert.equal(findings.length, 0)
+  const disabled: RiskRule = { ...ruleByCode('UNLAWFUL_LIQUIDATED_DAMAGES'), enabled: false }
+  const result = runCase(disabled, { text: '乙方提前离职应支付违约金三万元。', expect: 'OK' })
+  assert.equal(result.findings.length, 0)
 })
