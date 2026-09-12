@@ -59,7 +59,14 @@ function negationNote(text: string): string | undefined {
     : undefined
 }
 
-function matchesPattern(text: string, params: { include: string[]; exclude?: string[] }): boolean {
+function matchesPattern(
+  text: string,
+  params: { include: string[]; about?: string[]; exclude?: string[] },
+): boolean {
+  // about 表达"这一条是关于 X 的"：例如校验"约定不缴社保"时要求条款里出现「社会保险」或「社保」，
+  // 否则「不为…缴纳社会保险费」这类中间插了名字的写法会漏掉。
+  const about = params.about
+  if (about !== undefined && !about.some((keyword) => text.includes(keyword))) return false
   if (!params.include.some((keyword) => text.includes(keyword))) return false
   // 同一条款里出现例外情形就不算命中：例如"违反竞业限制约定应支付违约金"是法定允许的。
   return !(params.exclude ?? []).some((keyword) => text.includes(keyword))

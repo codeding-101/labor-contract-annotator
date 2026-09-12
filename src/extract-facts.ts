@@ -36,7 +36,7 @@ export type Fact = {
 
 export type FactSet = Record<FactKey, Fact>
 
-const CN_OR_DIGIT = '([0-9]+|[一二三四五六七八九十百]+)'
+const CN_OR_DIGIT = '([0-9]+|[一二三四五六七八九十百两]+)'
 
 function toNumber(raw: string): number | null {
   const cleaned = raw.replace(/[,，\s]/g, '')

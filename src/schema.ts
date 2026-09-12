@@ -104,9 +104,13 @@ export type FactKey = z.infer<typeof FactKeySchema>
 export const ComparisonOperatorSchema = z.enum(['<', '<=', '>', '>=', '==', '!='])
 export type ComparisonOperator = z.infer<typeof ComparisonOperatorSchema>
 
-/** 关键词命中即判定。exclude 用于排除同一条款里的例外情形（如"竞业限制的违约金"是合法的）。 */
+/** 关键词命中即判定。
+ *  - `about`：条款必须是关于这件事的（任一命中），例如校验"约定不缴社保"时要求出现「社会保险」或「社保」。
+ *    没有它的话，「不为…缴纳社会保险费」这类中间插了名字的写法会漏掉。
+ *  - `exclude`：出现即不算命中，用于排除法定例外（如"竞业限制的违约金"是合法的）。 */
 export const PatternParamsSchema = z.object({
   include: z.array(z.string().min(1)).min(1),
+  about: z.array(z.string().min(1)).optional(),
   exclude: z.array(z.string().min(1)).optional(),
 })
 
@@ -159,6 +163,8 @@ export const RuleCaseSchema = z
     texts: z.array(z.string().min(2)).min(1).optional(),
     facts: z.record(z.string(), z.union([z.number(), z.null()])).optional(),
     expect: z.enum(['VIOLATION', 'OK', 'UNDETERMINED']),
+    /** 用例来源：真实案例里出现的措辞要注明出自哪个案例（validate:data 会校验该 ID 存在）。 */
+    source: z.string().min(3).optional(),
     note: z.string().optional(),
   })
   .refine((value) => value.text !== undefined || value.texts !== undefined || value.facts !== undefined, {
@@ -219,6 +225,46 @@ export const TemplatesFileSchema = z.object({
   templates: z.record(z.string(), DeclaredTemplateSchema),
 })
 
+/** 典型案例文档的来源声明。案例 ID 由构建脚本按「文档 ID + 案例序号」生成。 */
+export const DeclaredCaseDocSchema = z.object({
+  name: z.string().min(2),
+  file: z.string().min(1),
+  url: urlString,
+  publisher: z.string().min(1),
+  publisherVerified: z.boolean(),
+  publishDate: isoDate,
+  retrievedAt: isoDate,
+  format: z.enum(['html']),
+  note: z.string().optional(),
+})
+
+export const CaseDocsFileSchema = z.object({
+  caseDocs: z.record(z.string(), DeclaredCaseDocSchema),
+})
+
+export const CaseSchema = z.object({
+  id: z.string().min(3),
+  ordinal: z.number().int().positive(),
+  caseNo: z.string().min(2),
+  title: z.string().min(4),
+  basicFacts: z.string().min(10),
+  holding: z.string().min(10),
+  significance: z.string().min(10),
+})
+
+export const CaseDocSchema = z.object({
+  docId: z.string().min(3),
+  name: z.string().min(2),
+  publisher: z.string().min(1),
+  publishDate: isoDate,
+  cases: z.array(CaseSchema).min(1),
+  provenance: z.object({
+    generatedAt: z.string(),
+    generator: z.string(),
+    source: DeclaredCaseDocSchema.extend({ sha256: sha256Hex, issues: z.array(z.string()) }),
+  }),
+})
+
 export const TemplateProvenanceSchema = DeclaredTemplateSchema.extend({
   sha256: sha256Hex,
   issues: z.array(z.string()),
@@ -271,3 +317,6 @@ export type ContractTemplate = z.infer<typeof ContractTemplateSchema>
 export type DeclaredTemplate = z.infer<typeof DeclaredTemplateSchema>
 export type TemplatesFile = z.infer<typeof TemplatesFileSchema>
 export type TemplateSection = z.infer<typeof TemplateSectionSchema>
+export type DeclaredCaseDoc = z.infer<typeof DeclaredCaseDocSchema>
+export type CaseDoc = z.infer<typeof CaseDocSchema>
+export type CaseEntry = z.infer<typeof CaseSchema>

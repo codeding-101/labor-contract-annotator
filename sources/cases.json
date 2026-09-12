@@ -1,0 +1,16 @@
+{
+  "$comment": "人工维护的案例文档来源声明。sources/cases/ 下是官方页面的冻结快照。案例 ID 由构建脚本按「文档 ID + 案例序号」生成，不在这里手写，避免与文档内容重复。",
+  "caseDocs": {
+    "supreme-court-2025-08-01-labor": {
+      "name": "最高人民法院劳动争议典型案例（2025-08-01 发布）",
+      "file": "supreme-court-2025-08-01-labor.html",
+      "url": "https://www.court.gov.cn/zixun/xiangqing/472681.html",
+      "publisher": "最高人民法院",
+      "publisherVerified": true,
+      "publishDate": "2025-08-01",
+      "retrievedAt": "2026-09-12",
+      "format": "html",
+      "note": "与《最高人民法院关于审理劳动争议案件适用法律问题的解释（二）》同日发布，共六个案例，每个含【基本案情】【裁判结果】【典型意义】。用途：给规则库提供带裁判结果的真实措辞——案例会原文描述企业与劳动者的约定，而裁判结果就是标签。企业劳动合同本身不公开，这类案例是最接近真实的验证材料。"
+    }
+  }
+}

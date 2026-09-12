@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { cnToInt } from './cn-number.ts'
-import { ContractTemplateSchema, RiskRuleSetSchema, StatuteSchema } from './schema.ts'
+import { CaseDocSchema, ContractTemplateSchema, RiskRuleSetSchema, StatuteSchema } from './schema.ts'
 
 const ROOT = join(import.meta.dirname, '..')
 
@@ -76,11 +76,38 @@ function validateTemplates(failures: string[]): void {
   }
 }
 
+/** 案例文档校验，返回全部案例 ID（供规则用例的来源校验使用）。 */
+function validateCases(failures: string[]): Set<string> {
+  const dir = join(ROOT, 'data', 'cases')
+  const ids = new Set<string>()
+
+  for (const file of readJsonFiles(dir, failures, 'npm run build:cases')) {
+    const doc = CaseDocSchema.parse(JSON.parse(readFileSync(join(dir, file), 'utf8')))
+    const ordinals = doc.cases.map((item) => item.ordinal)
+
+    const continuous = ordinals.every((value, index) => value === index + 1)
+    const idsConsistent = doc.cases.every((item) => item.id === `${doc.docId}-C${item.ordinal}`)
+    const stale = snapshotHash(`cases/${doc.provenance.source.file}`) !== doc.provenance.source.sha256
+
+    console.log(
+      `${doc.name}  案例 ${doc.cases.length}  连续=${continuous ? '✓' : '✗'}  ID=${idsConsistent ? '✓' : '✗'}  快照=${stale ? '✗' : '✓'}  ${file}`,
+    )
+
+    if (!continuous) failures.push(`${file}: 案例序号不连续`)
+    if (!idsConsistent) failures.push(`${file}: 案例 ID 与序号不一致`)
+    if (stale) failures.push(`${file}: 快照 sources/cases/${doc.provenance.source.file} 已变更但与哈希不符，需重新构建`)
+    for (const item of doc.cases) ids.add(item.id)
+  }
+
+  return ids
+}
+
 /**
- * 规则库校验。这里强制一条项目底线：**规则引用的法条 ID 必须真实存在**。
- * 规则里不复制条文原文，报告用哪条就从法条库取哪条，取不到就不允许存在这条规则。
+ * 规则库校验。这里强制两条项目底线：
+ * 1. **规则引用的法条 ID 必须真实存在**——规则里不复制条文原文，报告用哪条就从法条库取哪条。
+ * 2. **用例标注的来源案例必须真实存在**——真实措辞要能追到出处。
  */
-function validateRules(failures: string[]): void {
+function validateRules(failures: string[], knownCaseIds: Set<string>): void {
   const rulesDir = join(ROOT, 'rules')
   let files: string[]
   try {
@@ -104,12 +131,21 @@ function validateRules(failures: string[]): void {
   for (const file of files) {
     const ruleSet = RiskRuleSetSchema.parse(JSON.parse(readFileSync(join(rulesDir, file), 'utf8')))
     const missing: string[] = []
+    const unknownSources: string[] = []
     let caseCount = 0
+    let sourced = 0
 
     for (const rule of ruleSet.rules) {
       caseCount += rule.cases.length
       for (const id of rule.statuteRefs) {
         if (!knownIds.has(id)) missing.push(`${rule.code} → ${id}`)
+      }
+      for (const [index, ruleCase] of rule.cases.entries()) {
+        if (ruleCase.source === undefined) continue
+        sourced += 1
+        if (!knownCaseIds.has(ruleCase.source)) {
+          unknownSources.push(`${rule.code} 用例 ${index + 1} → ${ruleCase.source}`)
+        }
       }
     }
 
@@ -119,10 +155,11 @@ function validateRules(failures: string[]): void {
     const thin = ruleSet.rules.filter((rule) => rule.cases.length < 2).map((rule) => rule.code)
 
     console.log(
-      `${file}  v${ruleSet.ruleSetVersion}  规则 ${ruleSet.rules.length}（启用 ${enabled}）  用例 ${caseCount}  法条引用缺失 ${missing.length}`,
+      `${file}  v${ruleSet.ruleSetVersion}  规则 ${ruleSet.rules.length}（启用 ${enabled}）  用例 ${caseCount}（来源案例 ${sourced}）  法条引用缺失 ${missing.length}  来源案例未知 ${unknownSources.length}`,
     )
 
     for (const item of missing) failures.push(`${file}: 规则引用了法条库里不存在的条文 ${item}`)
+    for (const item of unknownSources) failures.push(`${file}: 用例标注了不存在的来源案例 ${item}`)
     for (const code of duplicated) failures.push(`${file}: 规则 code 重复 ${code}`)
     for (const code of thin) failures.push(`${file}: 规则 ${code} 的正反例少于 2 条`)
   }
@@ -132,7 +169,8 @@ function main(): number {
   const failures: string[] = []
   validateStatutes(failures)
   validateTemplates(failures)
-  validateRules(failures)
+  const knownCaseIds = validateCases(failures)
+  validateRules(failures, knownCaseIds)
 
   if (failures.length > 0) {
     console.log('\n=== 校验失败 ===')
