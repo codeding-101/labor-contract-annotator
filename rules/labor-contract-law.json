@@ -1,0 +1,195 @@
+{
+  "$comment": "手工编写的规则库（不是从快照构建的产物，所以放在仓库里直接维护）。每条规则的 statuteRefs 必须指向 data/statutes 里真实存在的条文 ID，由 npm run validate:data 校验；规则里不复制法条原文，报告用哪条就从库里取哪条。每条规则自带正反例，改规则必须同时改用例。",
+  "ruleSetVersion": "0.1.0",
+  "rules": [
+    {
+      "code": "UNLAWFUL_LIQUIDATED_DAMAGES",
+      "title": "约定由劳动者承担违约金（超出法定情形）",
+      "level": "red",
+      "category": "违约责任",
+      "checkType": "PATTERN_MATCH",
+      "params": {
+        "include": ["违约金"],
+        "exclude": ["服务期", "专项培训", "竞业限制"]
+      },
+      "statuteRefs": ["LCL-22", "LCL-23", "LCL-25"],
+      "explanation": "法律只允许两种情形下由你承担违约金：一是用人单位为你支付了专项培训费用并约定了服务期，二是竞业限制。除此之外约定的违约金，通常不被支持。",
+      "suggestion": "可以要求删除该条款。若对方坚持，可援引《劳动合同法》第二十五条说明该约定没有法律依据。",
+      "enabled": true,
+      "cases": [
+        {
+          "text": "乙方在合同期内提前离职的，应当向甲方支付违约金人民币三万元。",
+          "expect": "VIOLATION"
+        },
+        {
+          "text": "乙方违反竞业限制约定的，应当按照约定向甲方支付违约金。",
+          "expect": "OK",
+          "note": "竞业限制是法定允许约定违约金的情形，不应报出"
+        },
+        {
+          "text": "甲方为乙方提供专项培训费用，双方约定服务期；乙方违反服务期约定的，应支付违约金。",
+          "expect": "OK",
+          "note": "服务期＋专项培训是法定允许的情形"
+        }
+      ]
+    },
+    {
+      "code": "WAIVE_SOCIAL_INSURANCE",
+      "title": "约定放弃社会保险",
+      "level": "red",
+      "category": "社会保险",
+      "checkType": "PATTERN_MATCH",
+      "params": {
+        "include": [
+          "放弃社会保险",
+          "放弃社保",
+          "不缴纳社会保险",
+          "不缴社保",
+          "不参加社会保险",
+          "社保费用由乙方自行",
+          "社会保险费由乙方自行"
+        ]
+      },
+      "statuteRefs": ["LCL-26"],
+      "explanation": "参加社会保险是法定义务，属于用人单位不能通过约定免除的责任。这类约定即使双方签字，通常也被认定为无效，而且会直接影响你将来享受医保、养老、工伤等待遇。",
+      "suggestion": "不要签署含此条款的合同。可要求改为依法缴纳，并说明这是法定义务、无法通过约定排除。",
+      "enabled": true,
+      "cases": [
+        {
+          "text": "乙方自愿放弃社会保险，甲方将相应费用随工资发放。",
+          "expect": "VIOLATION"
+        },
+        {
+          "text": "甲方依法为乙方缴纳社会保险。",
+          "expect": "OK"
+        },
+        {
+          "text": "甲方不缴纳社会保险费，由乙方自行办理。",
+          "expect": "VIOLATION"
+        }
+      ]
+    },
+    {
+      "code": "DETAIN_ID_OR_COLLECT_FEES",
+      "title": "扣押证件或收取财物",
+      "level": "red",
+      "category": "用工准入",
+      "checkType": "PATTERN_MATCH",
+      "params": {
+        "include": ["扣押", "抵押金", "保证金", "押金", "收取财物"]
+      },
+      "statuteRefs": ["LCL-9"],
+      "explanation": "用人单位不得扣押劳动者的居民身份证和其他证件，也不得要求提供担保或以其他名义收取财物。押金、保证金、抵押金都属于被禁止的收费。",
+      "suggestion": "可要求删除该条款，并注意不要实际交付任何款项或证件原件；必要时向当地劳动保障监察部门反映。",
+      "enabled": true,
+      "cases": [
+        {
+          "text": "甲方有权扣押乙方居民身份证，待合同期满后归还。",
+          "expect": "VIOLATION"
+        },
+        {
+          "text": "乙方入职时应向甲方提供身份证复印件一份。",
+          "expect": "OK"
+        },
+        {
+          "text": "甲方以培训为名向乙方收取押金两千元。",
+          "expect": "VIOLATION"
+        }
+      ]
+    },
+    {
+      "code": "OVERTIME_PAY_DENIED",
+      "title": "规避加班费",
+      "level": "red",
+      "category": "工时与加班",
+      "checkType": "PATTERN_MATCH",
+      "params": {
+        "include": [
+          "不支付加班费",
+          "不予支付加班费",
+          "加班费已包含",
+          "工资已包含加班费",
+          "自愿放弃加班费",
+          "加班不另计"
+        ]
+      },
+      "statuteRefs": ["LCL-31"],
+      "explanation": "用人单位安排加班应当依法支付加班费。把加班费事先“包含在工资里”、或要求你声明“自愿放弃加班费”，实质上是规避这项义务。加班费的计算基数与倍率另有规定，不能靠一句约定排除。",
+      "suggestion": "可要求明确加班费的计算方式与支付标准，删去“已包含加班费”这类表述。",
+      "enabled": true,
+      "cases": [
+        {
+          "text": "乙方的月工资已包含加班费，甲方不再另行支付。",
+          "expect": "VIOLATION"
+        },
+        {
+          "text": "甲方安排乙方加班的，应依法安排补休或支付加班工资。",
+          "expect": "OK"
+        },
+        {
+          "text": "乙方自愿放弃加班费的，甲方无需支付。",
+          "expect": "VIOLATION"
+        }
+      ]
+    },
+    {
+      "code": "MISSING_SOCIAL_INSURANCE_TERM",
+      "title": "合同未提及社会保险",
+      "level": "yellow",
+      "category": "必备条款",
+      "checkType": "EXISTENCE",
+      "params": {
+        "mode": "MISSING_ANY",
+        "keywords": ["社会保险", "社保", "五险"]
+      },
+      "statuteRefs": ["LCL-17"],
+      "explanation": "社会保险是劳动合同的法定必备条款。合同里完全没有提及，属于必备条款缺失，你也就无从依据合同主张这项权利。",
+      "suggestion": "要求把社会保险的缴纳安排写入合同，不要接受“公司统一办理、不必写进合同”这类说法。",
+      "enabled": true,
+      "cases": [
+        {
+          "text": "劳动合同期限为三年，试用期三个月。",
+          "expect": "VIOLATION"
+        },
+        {
+          "text": "甲方依法为乙方办理社会保险并代扣代缴。",
+          "expect": "OK"
+        },
+        {
+          "text": "甲方为乙方缴纳五险。",
+          "expect": "OK",
+          "note": "口语化的“五险”也算已约定"
+        }
+      ]
+    },
+    {
+      "code": "MISSING_WORK_HOURS_TERM",
+      "title": "合同未提及工作时间与休息休假",
+      "level": "yellow",
+      "category": "必备条款",
+      "checkType": "EXISTENCE",
+      "params": {
+        "mode": "MISSING_ANY",
+        "keywords": ["工作时间", "工时", "休息休假", "休息日", "劳动时间"]
+      },
+      "statuteRefs": ["LCL-17"],
+      "explanation": "工作时间和休息休假是劳动合同的法定必备条款。合同里没有约定，后续在加班认定、休息安排上容易产生争议。",
+      "suggestion": "要求写明执行哪种工时制度（标准工时、综合计算工时或不定时），以及每周休息安排。",
+      "enabled": true,
+      "cases": [
+        {
+          "text": "甲方按月向乙方支付劳动报酬。",
+          "expect": "VIOLATION"
+        },
+        {
+          "text": "甲方安排乙方执行标准工时制度，每日工作时间不超过八小时。",
+          "expect": "OK"
+        },
+        {
+          "text": "甲方保障乙方的休息休假权利。",
+          "expect": "OK"
+        }
+      ]
+    }
+  ]
+}

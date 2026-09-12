@@ -80,22 +80,64 @@ export const CheckTypeSchema = z.enum(['NUMERIC_COMPARE', 'EXISTENCE', 'PATTERN_
 
 export const RiskLevelSchema = z.enum(['red', 'yellow', 'blue'])
 
-export const RiskRuleSchema = z.object({
+/** 关键词命中即判定。exclude 用于排除同一条款里的例外情形（如"竞业限制的违约金"是合法的）。 */
+export const PatternParamsSchema = z.object({
+  include: z.array(z.string().min(1)).min(1),
+  exclude: z.array(z.string().min(1)).optional(),
+})
+
+/**
+ * 条款存在性判定。
+ * MISSING_ANY：所有条款里都找不到任一关键词 → 命中（法定必备条款缺失）
+ * PRESENT_ANY：任一关键词出现 → 命中（出现被禁止的内容）
+ */
+export const ExistenceParamsSchema = z.object({
+  mode: z.enum(['MISSING_ANY', 'PRESENT_ANY']),
+  keywords: z.array(z.string().min(1)).min(1),
+})
+
+/** 数值比较。需要先从合同抽出事实（如合同期限、试用期长度），尚未实现。 */
+export const NumericParamsSchema = z.object({
+  field: z.string().min(1),
+  operator: z.enum(['<', '<=', '>', '>=', '==', '!=']),
+  value: z.number(),
+})
+
+/** 规则自带正反例：改规则必须同时改用例，否则测试会失败。 */
+export const RuleCaseSchema = z.object({
+  text: z.string().min(2),
+  expect: z.enum(['VIOLATION', 'OK']),
+  note: z.string().optional(),
+})
+
+const RiskRuleBase = z.object({
   code: z.string().regex(/^[A-Z][A-Z0-9_]*$/, '规则 code 必须是大写下划线形式'),
   title: z.string().min(2),
   level: RiskLevelSchema,
   category: z.string().min(1),
-  checkType: CheckTypeSchema,
-  params: z.record(z.string(), z.unknown()),
-  /** 必须指向真实存在的法条 ID，构建时校验。规则不允许没有法律依据。 */
+  /** 必须指向真实存在的法条 ID，由 validate:data 校验。规则不允许没有法律依据。 */
   statuteRefs: z.array(z.string()).min(1),
+  /** 给劳动者看的说明，与法条原文分开——法条原文一律从法条库按 ID 取，规则里不复制。 */
+  explanation: z.string().min(5),
+  suggestion: z.string().min(5),
   enabled: z.boolean(),
+  cases: z.array(RuleCaseSchema).min(2),
   note: z.string().optional(),
 })
 
+/**
+ * 规则按判定方式做判别联合，params 的形状由 checkType 决定，
+ * 这样引擎里不需要把 params 强转成 any。
+ */
+export const RiskRuleSchema = z.discriminatedUnion('checkType', [
+  RiskRuleBase.extend({ checkType: z.literal('PATTERN_MATCH'), params: PatternParamsSchema }),
+  RiskRuleBase.extend({ checkType: z.literal('EXISTENCE'), params: ExistenceParamsSchema }),
+  RiskRuleBase.extend({ checkType: z.literal('NUMERIC_COMPARE'), params: NumericParamsSchema }),
+])
+
 export const RiskRuleSetSchema = z.object({
   ruleSetVersion: z.string().min(1),
-  rules: z.array(RiskRuleSchema),
+  rules: z.array(RiskRuleSchema).min(1),
 })
 
 /** 范本来源声明。 */
@@ -165,6 +207,8 @@ export type SourcesFile = z.infer<typeof SourcesFileSchema>
 export type StatuteArticle = z.infer<typeof StatuteArticleSchema>
 export type Statute = z.infer<typeof StatuteSchema>
 export type RiskRule = z.infer<typeof RiskRuleSchema>
+export type RiskLevel = z.infer<typeof RiskLevelSchema>
+export type RuleCase = z.infer<typeof RuleCaseSchema>
 export type RiskRuleSet = z.infer<typeof RiskRuleSetSchema>
 export type ContractTemplate = z.infer<typeof ContractTemplateSchema>
 export type DeclaredTemplate = z.infer<typeof DeclaredTemplateSchema>
