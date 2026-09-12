@@ -15,6 +15,7 @@
 - 构建范本：`npm run build:templates`（从 `sources/templates/` 快照生成 `data/templates/*.json`）
 - 数据校验：`npm run validate:data`
 - 单测：`npm test`（Node 内置 `node:test`）
+- 评测比对引擎：`npm run eval:diff`（用已知答案的合同验四类分类，判错即退出码非 0）
 - 对照各来源条文差异：`npm run diff:sources -- labor-contract-law [条文号]`
 
 **没有** ESLint / Prettier，**没有** vitest / jest。不要引入。依赖只有 `zod` 与 `typescript`。
@@ -32,6 +33,8 @@
 - **`sources/` 下是官方页面的冻结快照，不要手改内容。** 要更新就重新抓取并同步哈希与声明。产物的哈希与快照绑定，改了快照不重新构建，`validate:data` 会失败——这是设计如此。
 - **`data/` 不入库**，是构建产物。克隆后跑 `npm run build:statutes` 与 `npm run build:templates` 复现。
 - **范本里的待填写位是 `{{FILL}}` 标记**（由 `src/mark-blanks.ts` 从 `<u>` 包住的空白段识别出来）。比对范本与用户合同时，`{{FILL}}` 必须当作通配符，否则用户填好的内容会被误判成"条款被改写"。改动比对逻辑时不要把这个标记当普通文本。
+- **切分 `{{FILL}}` 必须大小写不敏感**。`normalizeForCompare` 会转小写，`{{FILL}}` 变成 `{{fill}}`；用大写标记去 split 会切不开，整段标记被转义进正则，导致所有含填空位的条款都匹配不上。这个坑已经踩过一次，见 `src/diff-template.ts` 的注释与 `tests/diff-template.test.ts` 里对应的断言。
+- 改比对引擎后必须跑 `npm run eval:diff`。它用范本自身派生"已知答案"的合同（删一条/加一条/改一条/留空），任何分类判错都说明对齐或分类逻辑被改坏了。
 - 主来源（`role: primary`）抽取必须干净（条号连续、无抽取问题）；交叉来源允许有问题，它存在的意义就是暴露主来源的问题。
 - 抽取器宁可少收不可错收：条号不连续即停止并报错。不要为了让数据"看起来完整"而放宽断言。
 
