@@ -1,6 +1,6 @@
 import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist'
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
-import { groupTextItems, looksLikeUsableChineseText, type TextItemLike } from '../../src/text-lines.ts'
+import { assessExtractedText, groupTextItems, type TextItemLike } from '../../src/text-lines.ts'
 
 // 走 Vite 处理后的 worker 地址：解析在独立线程里跑，不阻塞界面
 GlobalWorkerOptions.workerSrc = workerUrl
@@ -36,9 +36,9 @@ export async function extractPdfText(data: ArrayBuffer): Promise<PdfExtraction> 
     lines.push(...groupTextItems(items))
   }
 
-  const text = lines.join('\n')
-  // 不只看长度：字体缺 ToUnicode 映射的 PDF 会提取出一堆乱码，字符数看着够但内容全错。
-  // 这种文件本地无从还原，宁可报「读不出来」，也不给一份满是错字的报告。
-  const hasTextLayer = looksLikeUsableChineseText(text, 0.4, MIN_TEXT_LENGTH)
-  return { text, pageCount: document.numPages, hasTextLayer }
+  // 不只看长度：字体缺 ToUnicode 映射、或字形被映射到控制字符区间（大量 SOH）时，
+  // 字符数看着够但内容全错。这类文件本地无从还原，宁可报「读不出来」，
+  // 也不给一份满是错字的报告。评估时会顺手剥掉控制字符。
+  const assessed = assessExtractedText(lines.join('\n'), 0.4, MIN_TEXT_LENGTH)
+  return { text: assessed.text, pageCount: document.numPages, hasTextLayer: assessed.usable }
 }

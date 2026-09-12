@@ -12,22 +12,38 @@ type Fragment = { x: number; y: number; text: string }
 /** 同一行的 y 容差（PDF 单位）。同一行的片段 y 完全相同，给一点容差防抖动。 */
 const Y_TOLERANCE = 2
 
+/** 控制字符（保留换行与制表符）。它们在正文里没有任何意义。 */
+const CONTROL_CHARS = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g
+
 /**
- * 判断提取出来的文字是否真的可用。
+ * 评估提取出来的文字，并顺手剥掉控制字符。
  *
- * PDF 有两种坏法，后者更危险：
- * 1. 压根没有文字层（扫描件、拍照件）——字符数为 0，容易发现；
- * 2. **有文字层，但字体没有 ToUnicode 映射**——提取出来是一堆乱码，字符数看着够、
- *    既不像扫描件也看不出来，于是照样生成一份满是错字的报告。
+ * PDF 有三种坏法，后两种只有这里拦得住：
+ * 1. 没有文字层（扫描件、拍照件）——长度为 0，容易发现；
+ * 2. **字体缺 ToUnicode 映射**——提取出一堆乱码，字符数看着够，容易蒙混过关；
+ * 3. **字形被映射到控制字符区间**——提取出大量 SOH（0x01）这类字符。实测遇到过一次。
  *
- * 判据用「中文字符占比」：中文合同里汉字应当占绝对多数，占比过低说明提取坏了。
- * 这种文件本地无从还原，正确做法是明确报「读不出来」，而不是给一份错报告。
+ * 判据两条：剥离控制字符后的**中文占比**够高，且**控制字符占比**够低。
+ * 这两种坏文件在本地都无从还原，正确做法是明确报「读不出来」，而不是给一份错报告。
  */
-export function looksLikeUsableChineseText(text: string, minRatio = 0.4, minLength = 50): boolean {
+export function assessExtractedText(
+  rawText: string,
+  minCjkRatio = 0.4,
+  minLength = 50,
+  maxControlRatio = 0.02,
+): { text: string; usable: boolean; removedControlChars: number } {
+  const removedControlChars = (rawText.match(CONTROL_CHARS) ?? []).length
+  const text = rawText.replace(CONTROL_CHARS, '')
+
+  const controlRatio = rawText.length === 0 ? 0 : removedControlChars / rawText.length
   const compact = text.replace(/\s/g, '')
-  if (compact.length < minLength) return false
   const cjk = [...compact].filter((ch) => /[\u4e00-\u9fff]/.test(ch)).length
-  return cjk / compact.length >= minRatio
+  const cjkRatio = compact.length === 0 ? 0 : cjk / compact.length
+
+  const usable =
+    compact.length >= minLength && controlRatio <= maxControlRatio && cjkRatio >= minCjkRatio
+
+  return { text, usable, removedControlChars }
 }
 
 /**
