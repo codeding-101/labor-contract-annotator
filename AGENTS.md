@@ -45,9 +45,10 @@
 - **网页端在 `web/`，是纯前端应用**（Vite + React + TS）。它是"文件不离开设备"能成立的实现层，两条约束：
   1. 它只能 import `src/` 下**不依赖 Node API** 的模块。`load-statutes.ts`、`build-*.ts`、`validate-data.ts`、`eval-diff.ts`、`diff-sources.ts`、`report-sample.ts` 都用了 `node:fs`，**浏览器里不能用**——网页端要自己的数据加载模块（`web/src/data.ts`），在构建期把 `data/` 与 `rules/` 打包进去。
   2. 因此 `web/` 构建前必须先在仓库根目录构建数据，否则找不到 JSON。
-- **网页端的文件读取**：PDF 走 `web/src/pdf.ts`（pdfjs-dist，按需加载），坐标重组行的逻辑在引擎的 `src/text-lines.ts`（纯函数、有单测）。**接新格式时的分工**：把"文件 → 文本行"放在 `web/`（那里才有库依赖），把"文本行 → 条款"留给引擎（`extract-contract.ts` 已足够宽容）。
-  - 验证文件上传要用 Playwright 的 `browser_file_upload`（点「选择 PDF 文件」会打开文件选择器，再传绝对路径）。测试用 PDF 放在 `tmp/`（已 gitignore，不进仓库）；需要时从政府网站抓一份带文字层的 PDF 即可。
-  - **扫描件与拍照 PDF 读不出文字**，这条路径必须有明确报错，不能产出空报告——这是本地化架构的硬代价，不要用低准确率的 OCR 硬撑。
+- **网页端的文件读取**：统一入口在 `web/src/document.ts`（按 MIME＋扩展名分发，各读取器按需加载）。PDF 走 `web/src/pdf.ts`（pdfjs），Word 走 `web/src/docx.ts`（mammoth 的 `extractRawText`，产出"一段一行"）；坐标重组行的逻辑在引擎的 `src/text-lines.ts`（纯函数、有单测）。**接新格式时的分工**：把"文件 → 文本行"放在 `web/`（那里才有库依赖），把"文本行 → 条款"留给引擎（`extract-contract.ts` 已足够宽容）。
+  - 验证文件上传要用 Playwright 的 `browser_file_upload`（点「选择合同文件」会打开文件选择器，再传绝对路径）。测试用文件放在 `tmp/`（已 gitignore，不进仓库）；PDF 可从政府网站抓，`.docx` 范本可从省市人社厅网站的附件里找。
+  - **扫描件与拍照图片读不出文字**，这条路径必须有明确报错，不能产出空报告——这是本地化架构的硬代价，不要用低准确率的 OCR 硬撑。
+  - **遇到误报先找"有原则的判据"，不要无脑收紧 include。** 两个已验证的例子：条款主题是申诉渠道时（含投诉／申诉／举报）不该按"收费约定"报；出现「乙方员工」说明乙方是企业，那类违约金不是让劳动者承担。改完必须两头验：误报消失 **且** 真阳性仍在（跑一遍可疑示例）。
 - **改界面必须在浏览器里真跑一遍**（Playwright MCP 已配好）。只截图不算验证：要走完整流程（填示例 → 分析 → 看报告），也要看空态与失败态，桌面与移动视口都要看，并确认控制台无错误。已经验证过的路径与结果记在 README 的「网页端」一节。
 - **部署到 GitHub Pages**（`.github/workflows/deploy-web.yml`）。三条不要改坏：
   1. `web/vite.config.ts` 的 `base: './'` 是必须的——Pages 项目站点在 `/<仓库名>/` 下，绝对路径资源会 404。

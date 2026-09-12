@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { extractDocument, kindOf } from './document.ts'
 import { analyzeContract, type AnalysisResult } from './pipeline.ts'
 import { ReportView } from './ReportView.tsx'
 import { cleanSampleText, riskySampleText } from './samples.ts'
@@ -26,29 +27,25 @@ export function App(): React.ReactElement {
 
   async function handleFile(file: File): Promise<void> {
     reset(true)
-    if (file.type !== 'application/pdf' && !/\.pdf$/i.test(file.name)) {
-      setError('目前只支持 PDF 文件。Word 与图片格式的支持还在做。')
+    if (kindOf(file) === null) {
+      setError('暂时只支持 PDF 与 Word（.docx）。老式 .doc 与图片格式还没接。')
       return
     }
 
     try {
-      // 按需加载：pdfjs 不小，只有真上传 PDF 时才拉进来，首屏不必为它买单
-      const { extractPdfText } = await import('./pdf.ts')
-      const extraction = await extractPdfText(await file.arrayBuffer())
+      // 各格式的读取器按需加载，首屏不为它们买单
+      const extraction = await extractDocument(file)
       if (!extraction.hasTextLayer) {
         setError(
-          `这个 PDF 有 ${extraction.pageCount} 页，但读不到文字——多半是扫描件或拍照生成的图片 PDF。` +
-            '这种情况本工具暂时无法解析，请改用其他方式提供合同文本（例如从 Word 原件复制，或手工录入需要核对的条款）。',
+          `这个文件读不到文字（${extraction.detail}）——可能是扫描件、拍照生成的图片，或加密文档。` +
+            '这种情况本工具暂时无法解析，请改用其他方式提供合同文本（例如从原件复制，或手工录入需要核对的条款）。',
         )
         return
       }
       setText(extraction.text)
-      setSource({
-        label: file.name,
-        detail: `PDF · ${extraction.pageCount} 页 · 提取出 ${extraction.text.length} 字`,
-      })
+      setSource({ label: file.name, detail: extraction.detail })
     } catch (cause) {
-      setError(`读取 PDF 失败：${cause instanceof Error ? cause.message : String(cause)}`)
+      setError(`读取文件失败：${cause instanceof Error ? cause.message : String(cause)}`)
     }
   }
 
@@ -86,7 +83,7 @@ export function App(): React.ReactElement {
               id="pdf-input"
               className="sr-only"
               type="file"
-              accept="application/pdf,.pdf"
+              accept="application/pdf,.pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
               onChange={(event) => {
                 const file = event.target.files?.[0]
                 if (file !== undefined) void handleFile(file)
@@ -94,7 +91,7 @@ export function App(): React.ReactElement {
               }}
             />
             <label className="ghost button-like" htmlFor="pdf-input">
-              选择 PDF 文件
+              选择合同文件
             </label>
             <button type="button" className="ghost" onClick={() => load(cleanSampleText, '合规示例')}>
               填入合规示例
@@ -109,7 +106,7 @@ export function App(): React.ReactElement {
         </div>
 
         <p className="muted hint">
-          支持<b>带文字层</b>的 PDF（电子合同基本都是），或直接把合同文字粘贴到下面。扫描件与拍照图片暂时读不出内容——本工具会明确告诉你，而不是给出一份空报告。
+          支持<b>带文字层</b>的 PDF、Word（.docx），或直接把合同文字粘贴到下面。老式 .doc、扫描件与拍照图片暂时读不出内容——本工具会明确告诉你原因，而不是给出一份空报告。
         </p>
 
         <label className="sr-only" htmlFor="contract-text">
@@ -119,7 +116,7 @@ export function App(): React.ReactElement {
           id="contract-text"
           value={text}
           rows={12}
-          placeholder="把劳动合同的文字内容粘贴到这里，或用上方的「选择 PDF 文件」。带条款编号（如「第一条」）最好，没有编号也能分析。"
+          placeholder="把劳动合同的文字内容粘贴到这里，或用上方的「选择合同文件」。带条款编号（如「第一条」）最好，没有编号也能分析。"
           onChange={(event) => {
             setText(event.target.value)
             setSource(null)

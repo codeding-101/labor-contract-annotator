@@ -5,7 +5,7 @@ import { groupTextItems, type TextItemLike } from '../../src/text-lines.ts'
 // 走 Vite 处理后的 worker 地址：解析在独立线程里跑，不阻塞界面
 GlobalWorkerOptions.workerSrc = workerUrl
 
-export type DocumentExtraction = {
+export type PdfExtraction = {
   text: string
   pageCount: number
   /** 是否提取到足够的文字。扫描件、拍照生成的 PDF 没有文字层，这里就是 false。 */
@@ -22,7 +22,7 @@ const MIN_TEXT_LENGTH = 50
  * 扫描件与拍照生成的 PDF 里只有图像，浏览器端没有可靠的免费方案能读出中文条款；
  * 这时必须让用户知道"读不出来"，而不是给出一段空文本让他以为分析过了。
  */
-export async function extractPdfText(data: ArrayBuffer): Promise<DocumentExtraction> {
+export async function extractPdfText(data: ArrayBuffer): Promise<PdfExtraction> {
   const document = await getDocument({ data }).promise
   const lines: string[] = []
 
